@@ -3,7 +3,7 @@ requests
 pandas
 
 # LLM / agent
-anthropic
+openai
 
 # embeddings & vector db (뉴스 재정렬 / 평가용 코퍼스 인덱싱)
 sentence-transformers

@@ -11,8 +11,8 @@ DART 공시 API와 뉴스 검색이라는 서로 다른 도구를 상황에 맞�
 ## 진행 단계 (Phase)
 
 - [x] Phase 1 — DART API 연동, 재무 데이터 수집 및 로컬 DB 구축
-- [ ] Phase 2 — 뉴스 API 연동 (실시간 검색 도구 + 평가용 고정 코퍼스)
-- [ ] Phase 3 — 단일 도구 RAG 베이스라인 (DART만 / News만)
+- [x] Phase 2 — 뉴스 API 연동 (실시간 검색 도구 + 평가용 고정 코퍼스)
+- [x] Phase 3 — 단일 도구 RAG 베이스라인 (DART만 / News만)
 - [ ] Phase 4 — Planner + Tool use 결합한 멀티홉 에이전트
 - [ ] Phase 5 — 채점 파이프라인 구축 + ablation 실험
 

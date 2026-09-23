@@ -18,16 +18,21 @@ Phase 2: (a) News Retriever Tool용 실시간 검색 호출,
   폭주성 호출을 원천 차단하는 용도 — 이 프로젝트는 하루 수십~수백 건이면 충분함)
 """
 
+import html
 import json
 import os
+import re
 from datetime import date
 from pathlib import Path
 
 import requests
 
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
-BASE_URL = "https://openapi.naver.com/v1/search/news.json"  # TODO: NCP 콘솔에서 실제 엔드포인트 확인 후 수정
+# NAVER API HUB 이관 후 엔드포인트/헤더/도메인이 모두 바뀜 (기존 openapi.naver.com + X-Naver-Client-Id 방식 폐기).
+BASE_URL = "https://naverapihub.apigw.ntruss.com/search/v1/news"
 
 # 자체 안전장치: 네이버 무료 한도(일 25,000건)보다 훨씬 낮게 설정.
 # 이 프로젝트가 실제로 필요한 호출량은 하루 수백 건 이내이므로 충분함.
@@ -60,10 +65,16 @@ def _bump_and_check_usage() -> int:
     return count
 
 
-def search_news(query: str, display: int = 10, sort: str = "date") -> dict:
+def _clean_text(raw: str) -> str:
+    """NAVER 응답의 <b> 강조 태그와 HTML 엔티티(&quot; 등)를 제거."""
+    return html.unescape(_HTML_TAG_RE.sub("", raw)).strip()
+
+
+def search_news(query: str, display: int = 10, sort: str = "date") -> list[dict]:
     """News Retriever Tool용 실시간 검색 호출.
 
     호출마다 자체 일일 한도를 체크한다 (DailyCapExceeded 발생 가능).
+    title/description은 HTML 태그를 제거한 순수 텍스트로 반환 (임베딩/재정렬에 바로 쓸 수 있도록).
     """
     if not NAVER_CLIENT_ID or not NAVER_CLIENT_SECRET:
         raise RuntimeError("NAVER_CLIENT_ID / NAVER_CLIENT_SECRET이 .env에 설정되어 있지 않습니다.")
@@ -71,14 +82,68 @@ def search_news(query: str, display: int = 10, sort: str = "date") -> dict:
     _bump_and_check_usage()
 
     headers = {
-        "X-Naver-Client-Id": NAVER_CLIENT_ID,
-        "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
+        "X-NCP-APIGW-API-KEY-ID": NAVER_CLIENT_ID,
+        "X-NCP-APIGW-API-KEY": NAVER_CLIENT_SECRET,
     }
     params = {"query": query, "display": display, "sort": sort}
     resp = requests.get(BASE_URL, headers=headers, params=params, timeout=10)
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+
+    return [
+        {
+            "title": _clean_text(item["title"]),
+            "description": _clean_text(item["description"]),
+            "link": item["link"],
+            "originallink": item["originallink"],
+            "pub_date": item["pubDate"],
+        }
+        for item in data.get("items", [])
+    ]
 
 
-# TODO: Phase 2에서 구현
-# - collect_fixed_corpus(queries, start_date, end_date)  # 평가용 고정 수집 (별도 저장, search_news와 용도 분리)
+_EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
+_embedding_model = None  # 첫 호출 때만 로드 (약 2GB, DART만 쓰는 코드에선 불필요한 로딩 방지)
+
+
+def _get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        from sentence_transformers import SentenceTransformer
+
+        _embedding_model = SentenceTransformer(_EMBEDDING_MODEL_NAME)
+    return _embedding_model
+
+
+def embed_texts(texts: list[str]):
+    """bge-m3로 텍스트 리스트를 정규화된 임베딩(코사인 유사도용)으로 변환. numpy.ndarray 반환.
+
+    News Retriever Tool의 쿼리타임 재정렬과 평가용 고정 코퍼스 인덱싱(collect_news_corpus.py)이
+    모델 로딩 로직을 공유하기 위한 공개 헬퍼.
+    """
+    model = _get_embedding_model()
+    return model.encode(texts, normalize_embeddings=True)
+
+
+def rerank_by_similarity(query: str, items: list[dict], top_k: int = 5) -> list[dict]:
+    """title+description과 query의 임베딩 코사인 유사도로 재정렬 (상위 top_k만 반환).
+
+    정적 인덱스 없이 검색 결과를 그 자리에서만 임베딩하는 쿼리타임 재정렬 (Notion §1.5).
+    """
+    if not items:
+        return []
+
+    texts = [f"{item['title']} {item['description']}" for item in items]
+    embeddings = embed_texts([query] + texts)
+    query_emb, item_embs = embeddings[0], embeddings[1:]
+    scores = item_embs @ query_emb  # normalize_embeddings=True라 내적 = 코사인 유사도
+
+    ranked = sorted(zip(items, scores), key=lambda pair: pair[1], reverse=True)
+    return [{**item, "similarity_score": float(score)} for item, score in ranked[:top_k]]
+
+
+def search_news_reranked(query: str, candidate_display: int = 20, top_k: int = 5, sort: str = "date") -> list[dict]:
+    """News Retriever Tool 본체: 실시간 검색 후 쿼리 시점에 임베딩 재정렬해서 상위 top_k 반환."""
+    candidates = search_news(query, display=candidate_display, sort=sort)
+    return rerank_by_similarity(query, candidates, top_k=top_k)
+

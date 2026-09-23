@@ -20,5 +20,11 @@ src/data/.news_api_usage.json
 # DART corp_code 조회 캐시 (30MB짜리 zip에서 파싱한 결과, 로컬 캐시라 커밋 불필요)
 src/data/.dart_corp_code_cache.json
 
+# 실험 입출력 로그 (baseline/agent 실행 기록, 로컬 확인용 - 커밋 불필요)
+logs/
+
+# 사람이 직접 훑어보기 위한 데이터 export (재생성 가능, 커밋 불필요)
+data/*_export.*
+
 .ipynb_checkpoints/
 .DS_Store
