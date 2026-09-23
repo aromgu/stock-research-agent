@@ -14,5 +14,8 @@ data/processed/
 chroma/
 .chroma/
 
+# 뉴스 API 자체 일일 호출량 카운터 (로컬 상태, 커밋 불필요)
+src/data/.news_api_usage.json
+
 .ipynb_checkpoints/
 .DS_Store
