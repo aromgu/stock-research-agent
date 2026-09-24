@@ -14,7 +14,7 @@ from pathlib import Path
 from openai import OpenAI
 
 from . import tools
-from .prompts import PREMISE_CHECK_RULE
+from .prompts import ANSWER_RULE, PREMISE_CHECK_RULE
 
 MODEL = "gpt-5.4-nano"  # 저렴한 모델로 고정 (베이스라인 단계에서 비용 최소화)
 LOG_PATH = Path(__file__).resolve().parent.parent.parent / "logs" / "baseline_experiments.md"
@@ -46,28 +46,29 @@ def _get_client() -> OpenAI:
 
 
 def _ask(prompt: str) -> str:
+    # 에이전트(planner.py)와 같은 조건이 되도록 출력 길이 제한을 두지 않는다 — 예전 300토큰
+    # 제한 때문에 baseline 답변이 수치를 말하기도 전에 잘려서 불공정하게 졌다.
     resp = _get_client().chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
-        max_completion_tokens=300,
     )
     return resp.choices[0].message.content
 
 
-def answer_with_dart(question: str, name_or_stock_code: str) -> str:
-    """DART 데이터만 근거로 질문에 답한다 (뉴스/주가 없이)."""
+def answer_with_dart(question: str, name_or_stock_code: str) -> dict:
+    """DART 데이터만 근거로 질문에 답한다 (뉴스/주가 없이). {"answer", "context"} 반환."""
     start = time.perf_counter()
     context = tools.get_financial_data(name_or_stock_code)
     prompt = (
         f"다음은 DART 공시 재무 데이터다:\n{context}\n\n"
-        f"{PREMISE_CHECK_RULE}\n\n"
+        f"{PREMISE_CHECK_RULE}\n{ANSWER_RULE}\n\n"
         f"이 데이터만 근거로 질문에 답해줘. 데이터에 없는 내용(예: 주가, 뉴스 맥락)은 "
         f"모른다고 답해. 질문: {question}"
     )
     answer = _ask(prompt)
     elapsed = time.perf_counter() - start
     _log_experiment("dart", question, prompt, answer, elapsed)
-    return answer
+    return {"answer": answer, "context": context}
 
 
 def _build_search_query(question: str) -> str:
@@ -90,25 +91,25 @@ def _build_search_query(question: str) -> str:
     return resp.choices[0].message.content.strip()
 
 
-def answer_with_news(question: str, top_k: int = 5) -> str:
-    """뉴스 검색 결과만 근거로 질문에 답한다 (DART/주가 없이)."""
+def answer_with_news(question: str) -> dict:
+    """뉴스 검색 결과만 근거로 질문에 답한다 (DART/주가 없이). {"answer", "context"} 반환."""
     start = time.perf_counter()  # 검색어 생성부터 LLM 최종 답변까지 전체 소요시간
     search_query = _build_search_query(question)
     context = tools.search_news(search_query)
     prompt = (
         f"다음은 관련 뉴스 기사 목록이다:\n{context}\n\n"
-        f"{PREMISE_CHECK_RULE}\n\n"
+        f"{PREMISE_CHECK_RULE}\n{ANSWER_RULE}\n\n"
         f"이 기사들만 근거로 질문에 답하고, 사용한 기사 번호를 [1] 같은 형식으로 인용해줘. "
         f"기사에 없는 내용(예: 정확한 재무 수치)은 모른다고 답해. 질문: {question}"
     )
     answer = _ask(prompt)
     elapsed = time.perf_counter() - start
     _log_experiment("news", question, f"[검색어: {search_query}]\n\n{prompt}", answer, elapsed)
-    return answer
+    return {"answer": answer, "context": f"[search_news 검색어: {search_query}]\n{context}"}
 
 
-def answer_with_all_tools(question: str, company: str) -> str:
-    """DART+뉴스+주가 세 도구를 질문 내용과 무관하게 항상 전부 불러 답한다.
+def answer_with_all_tools(question: str, company: str) -> dict:
+    """DART+뉴스+주가 세 도구를 질문 내용과 무관하게 항상 전부 불러 답한다. {"answer", "context"} 반환.
 
     "도구 선택 능력이 있는 게 그냥 도구를 다 부르는 것보다 나은가?"를 보여주기 위한
     비교군 — 에이전트가 이기면 단순히 "정보가 많아서"가 아니라 "필요한 걸 골라 쓰고
@@ -131,11 +132,11 @@ def answer_with_all_tools(question: str, company: str) -> str:
     )
     prompt = (
         f"다음은 세 가지 출처의 데이터다:\n{context}\n\n"
-        f"{PREMISE_CHECK_RULE}\n\n"
+        f"{PREMISE_CHECK_RULE}\n{ANSWER_RULE}\n\n"
         f"이 데이터만 근거로 질문에 답해줘. 관련 없는 출처는 무시하고, 데이터에 없는 "
         f"내용은 모른다고 답해. 질문: {question}"
     )
     answer = _ask(prompt)
     elapsed = time.perf_counter() - start
     _log_experiment("all_tools", question, prompt, answer, elapsed)
-    return answer
+    return {"answer": answer, "context": context}

@@ -38,9 +38,9 @@ NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 # NAVER API HUB 이관 후 엔드포인트/헤더/도메인이 모두 바뀜 (기존 openapi.naver.com + X-Naver-Client-Id 방식 폐기).
 BASE_URL = "https://naverapihub.apigw.ntruss.com/search/v1/news"
 
-# 자체 안전장치: 네이버 무료 한도(일 25,000건)보다 훨씬 낮게 설정.
-# 이 프로젝트가 실제로 필요한 호출량은 하루 수백 건 이내이므로 충분함.
-DAILY_CALL_CAP = 300
+# NAVER API HUB 무료 한도(일 25,000건)에 맞춤. 초과 시 NAVER가 과금 없이 차단하므로 비용 위험은 없다.
+# (예전엔 300으로 두었으나 평가 실행 1회에 수백 건이 필요해져 공식 한도로 올림, 2026-09-24)
+DAILY_CALL_CAP = 25000
 _USAGE_FILE = Path(__file__).parent / ".news_api_usage.json"
 
 
@@ -74,9 +74,10 @@ def _clean_text(raw: str) -> str:
     return html.unescape(_HTML_TAG_RE.sub("", raw)).strip()
 
 
-def search_news(query: str, display: int = 10, sort: str = "date") -> list[dict]:
+def search_news(query: str, display: int = 10, sort: str = "date", start: int = 1) -> list[dict]:
     """News Retriever Tool용 실시간 검색 호출.
 
+    start는 결과 시작 위치(1~1000, NAVER 검색 API 규격) — 페이지를 넘겨 더 과거 기사까지 볼 때 사용.
     호출마다 자체 일일 한도를 체크한다 (DailyCapExceeded 발생 가능).
     title/description은 HTML 태그를 제거한 순수 텍스트로 반환 (임베딩/재정렬에 바로 쓸 수 있도록).
     """
@@ -89,7 +90,7 @@ def search_news(query: str, display: int = 10, sort: str = "date") -> list[dict]
         "X-NCP-APIGW-API-KEY-ID": NAVER_CLIENT_ID,
         "X-NCP-APIGW-API-KEY": NAVER_CLIENT_SECRET,
     }
-    params = {"query": query, "display": display, "sort": sort}
+    params = {"query": query, "display": display, "sort": sort, "start": start}
     resp = requests.get(BASE_URL, headers=headers, params=params, timeout=10)
     resp.raise_for_status()
     data = resp.json()
@@ -181,6 +182,40 @@ def _dedupe_similar_titles(items: list[dict], threshold: float = 0.85) -> list[d
     return kept
 
 
+_MAX_PAGES = 10  # NAVER 검색 API는 start 최대 1000 → display=100이면 10페이지까지
+_RERANK_POOL_LIMIT = 80  # bge-m3 임베딩은 CPU에서 100건 ≈ 13초, 500건 ≈ 66초라 재정렬 대상을 제한
+
+
+def _collect_paged(query: str, display: int, sort: str, after: datetime | None, before: datetime | None) -> list[dict]:
+    """기간이 지정됐을 때 페이지를 넘기며 후보를 모은다 (최신순이라 뒤 페이지일수록 과거).
+
+    첫 페이지 100건은 인기 종목이면 최근 두 달 정도만 덮는다. 튜닝 셋에서 0건이던 검색어가
+    페이지를 넘기자 기간 내 기사 184~514건으로 늘었다 (2026-09-24 측정).
+    """
+    items = []
+    for page in range(_MAX_PAGES):
+        batch = search_news(query, display=display, sort=sort, start=1 + page * display)
+        items.extend(batch)
+        if len(batch) < display:
+            break  # 결과가 더 없음
+        oldest = min(parsedate_to_datetime(i["pub_date"]) for i in batch)
+        if after is not None and oldest < after:
+            break  # 기간 시작일보다 과거까지 왔으면 충분
+        if after is None and len(_filter_by_date_range(items, None, before)) >= display:
+            break  # 시작일 없이 before만 있으면 기간 내 한 페이지 분량을 모으면 멈춤
+    return items
+
+
+def _lexical_prefilter(query: str, items: list[dict], limit: int) -> list[dict]:
+    """임베딩 전에 검색어 단어가 제목·요약에 많이 나오는 순으로 limit건만 남긴다 (값싼 1차 필터)."""
+    if len(items) <= limit:
+        return items
+    tokens = [t for t in query.split() if len(t) >= 2]
+    return sorted(items, key=lambda i: sum(t in f"{i['title']} {i['description']}" for t in tokens), reverse=True)[
+        :limit
+    ]
+
+
 def search_news_reranked(
     query: str,
     candidate_display: int = 20,
@@ -196,26 +231,27 @@ def search_news_reranked(
     반기(4~6월) 실적 원인을 찾을 때는 "오늘 기준 최근 N일"이 아니라 그 분기 기간을 기준으로
     검색해야 한다 (원인이 된 사건이 오늘보다 훨씬 전, 분기 중간에 있을 수 있음).
 
-    주의: NAVER 검색은 인기 검색어일수록 sort=date/sim 둘 다 최근 며칠치로 결과가 꽉 차서,
-    display=100을 받아도 몇 달 전 과거로는 사실상 도달하지 못하는 경우가 흔하다(직접 확인함).
-    그래서 after/before를 "명시적으로" 지정했는데 그 범위 안 기사가 하나도 없으면, 엉뚱한
-    최신 기사로 조용히 바꿔치기하지 않고 빈 리스트를 그대로 반환한다 (호출부가 "그 기간
-    기사를 못 찾았다"는 걸 알아야 하므로). after/before를 생략했을 때(기본 recency_days 모드)만
+    NAVER 검색 결과 한 페이지는 인기 검색어면 최근 몇 주~두 달치로 채워진다. 그래서
+    after/before를 지정하면 페이지를 넘기며(최대 1,000건) 그 기간까지 거슬러 올라간다.
+    그래도 그 범위 안 기사가 하나도 없으면, 엉뚱한 최신 기사로 조용히 바꿔치기하지 않고
+    빈 리스트를 그대로 반환한다 (호출부가 "그 기간 기사를 못 찾았다"는 걸 알아야 하므로).
+    after/before를 생략했을 때(기본 recency_days 모드)는 속도를 위해 한 페이지만 보고,
     검색어가 너무 좁아 후보가 부족하면 필터 없는 전체 후보로 관대하게 폴백한다.
     """
-    candidates = search_news(query, display=candidate_display, sort=sort)
     explicit_range = bool(after or before)
 
     if explicit_range:
         after_dt, before_dt = _parse_date_bound(after), _parse_date_bound(before)
+        candidates = _collect_paged(query, candidate_display, sort, after_dt, before_dt)
     else:
         after_dt, before_dt = datetime.now(timezone.utc) - timedelta(days=recency_days), None
+        candidates = search_news(query, display=candidate_display, sort=sort)
 
     filtered = _filter_by_date_range(candidates, after_dt, before_dt)
     if explicit_range:
         pool = filtered  # 못 찾았으면 빈 채로 - 엉뚱한 기간 기사로 바꿔치기하지 않음
     else:
         pool = filtered if len(filtered) >= top_k else candidates
-    deduped = _dedupe_similar_titles(pool)
-    return rerank_by_similarity(query, deduped, top_k=top_k)
+    deduped = _dedupe_similar_titles(_lexical_prefilter(query, pool, _RERANK_POOL_LIMIT * 2))
+    return rerank_by_similarity(query, _lexical_prefilter(query, deduped, _RERANK_POOL_LIMIT), top_k=top_k)
 

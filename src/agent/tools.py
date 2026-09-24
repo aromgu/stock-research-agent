@@ -26,15 +26,33 @@ _DEFAULT_PRICE_WINDOW_DAYS = 30
 _MAX_DAILY_CLOSES_SHOWN = 40  # 기간이 길면 일별 종가 나열이 너무 길어져서 생략
 
 
-def _fetch_financials(corp_code: str, reprt_code: str | None, n_accounts: int = 20) -> list[dict]:
-    """로컬 DB(Phase 1 수집분)에서 재무 항목을 가져온다. reprt_code=None이면 가장 최근 보고서."""
+def _available_periods(corp_code: str) -> list[tuple[str, str]]:
+    """로컬 DB에 있는 (사업연도, 보고서코드) 목록, 시간순."""
     conn = sqlite3.connect(DB_PATH)
     try:
         periods = conn.execute(
             "SELECT DISTINCT bsns_year, reprt_code FROM financials WHERE corp_code=?", (corp_code,)
         ).fetchall()
+    finally:
+        conn.close()
+    return sorted(periods, key=lambda p: (int(p[0]), _PERIOD_RANK[p[1]]))
+
+
+def _describe_available(periods: list[tuple[str, str]]) -> str:
+    return ", ".join(f"{y}년 {_PERIOD_LABEL[c]}" for y, c in periods)
+
+
+def _fetch_financials(
+    corp_code: str, reprt_code: str | None, n_accounts: int = 20, year: str | None = None
+) -> list[dict]:
+    """로컬 DB(Phase 1 수집분)에서 재무 항목을 가져온다. reprt_code/year가 None이면 조건 없이 가장 최근 보고서."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        periods = _available_periods(corp_code)
         if reprt_code is not None:
             periods = [p for p in periods if p[1] == reprt_code]
+        if year is not None:
+            periods = [p for p in periods if p[0] == str(year)]
         if not periods:
             return []
         year, reprt_code = max(periods, key=lambda p: (int(p[0]), _PERIOD_RANK[p[1]]))
@@ -86,26 +104,30 @@ def _describe_row(f: dict) -> str:
     return f"{line} (비교: {prior})"
 
 
-def get_financial_data(company: str, period: str = "latest") -> str:
+def get_financial_data(company: str, period: str = "latest", year: str | int | None = None) -> str:
     """DART Tool: 로컬 DB(Phase 1)에 저장된 기업 재무 데이터를 조회한다.
 
     period: "latest"(기본, 가장 최근 보고서) | "annual" | "q1" | "h1" | "q3"
-    현재 삼성전자/SK하이닉스 최근 4개 보고서만 로컬 DB에 있음.
+    year: 사업연도(예: 2025). 생략하면 해당 period의 가장 최근 연도.
+    결과 첫머리에 조회 가능한 보고서 목록을 붙인다 — 예전엔 연도 파라미터도, 목록도 없어서
+    "2025년 1~9월"을 물었을 때 에이전트가 latest(2026 반기)만 보고 "자료 없음"으로 포기했다.
     """
     reprt_code = _PERIOD_ARG_TO_CODE.get(period.lower())  # "latest" 등 매칭 안 되면 None -> 최근 보고서
 
     corp_code = dc.get_corp_code(company)
     overview = dc.get_company_overview(corp_code)
-    facts = _fetch_financials(corp_code, reprt_code)
+    available = f"(조회 가능한 보고서: {_describe_available(_available_periods(corp_code))})"
+    facts = _fetch_financials(corp_code, reprt_code, year=year)
 
     if not facts:
-        return f"{overview['corp_name']}: 요청한 기간의 재무 데이터가 로컬 DB에 없음 (현재 삼성전자/SK하이닉스 최근 4개 보고서만 지원)"
+        requested = f"{year}년 " if year else ""
+        return f"{overview['corp_name']}: 요청한 {requested}{period} 보고서가 로컬 DB에 없음 {available}"
 
     year, reprt_code = facts[0]["bsns_year"], facts[0]["reprt_code"]
     period_label = f"{year}년 {_PERIOD_LABEL[reprt_code]}"
     end_month = _PERIOD_END_MONTH[reprt_code]
     period_range = f"{year}-01-01 ~ {year}-{end_month:02d}-{_month_end_day(end_month)}"
-    header = f"{overview['corp_name']} ({period_label}, 기간 {period_range}, 연결재무제표 기준)"
+    header = f"{overview['corp_name']} ({period_label}, 기간 {period_range}, 연결재무제표 기준) {available}"
     return header + "\n" + "\n".join(_describe_row(f) for f in facts)
 
 
@@ -190,6 +212,10 @@ TOOL_SCHEMAS = [
                         "type": "string",
                         "enum": ["latest", "annual", "q1", "h1", "q3"],
                         "description": "조회할 보고서 기간. latest=가장 최근 보고서(기본값), annual=연간, q1=1분기, h1=반기, q3=3분기",
+                    },
+                    "year": {
+                        "type": "string",
+                        "description": "사업연도 (예: 2025). 질문에 특정 연도가 있으면 지정. 생략하면 해당 기간의 가장 최근 연도",
                     },
                 },
                 "required": ["company"],
