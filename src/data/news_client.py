@@ -27,6 +27,9 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()  # .env 파일을 명시적으로 로드하지 않으면 셸에 키를 직접 export한 세션에서만 동작함
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 

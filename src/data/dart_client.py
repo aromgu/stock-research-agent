@@ -17,6 +17,9 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()  # .env 파일을 명시적으로 로드하지 않으면 셸에 키를 직접 export한 세션에서만 동작함
 
 DART_API_KEY = os.getenv("DART_API_KEY")
 BASE_URL = "https://opendart.fss.or.kr/api"
@@ -88,18 +91,29 @@ def _load_corp_code_index(force_refresh: bool = False) -> dict:
     return index
 
 
+def _find_entry(name_or_stock_code: str, force_refresh: bool = False) -> dict:
+    index = _load_corp_code_index(force_refresh=force_refresh)
+    entry = index["by_stock_code"].get(name_or_stock_code) or index["by_name"].get(name_or_stock_code)
+    if entry is None:
+        raise KeyError(f"'{name_or_stock_code}'에 해당하는 기업을 찾지 못했습니다.")
+    return entry
+
+
 def get_corp_code(name_or_stock_code: str, force_refresh: bool = False) -> str:
     """회사명 또는 종목코드로 DART corp_code를 찾는다.
 
     최초 호출 시 전체 기업 목록(zip, 약 30MB)을 받아 로컬(.dart_corp_code_cache.json)에
     캐싱하고, 이후 호출은 캐시를 재사용한다.
     """
-    index = _load_corp_code_index(force_refresh=force_refresh)
+    return _find_entry(name_or_stock_code, force_refresh)["corp_code"]
 
-    entry = index["by_stock_code"].get(name_or_stock_code) or index["by_name"].get(name_or_stock_code)
-    if entry is None:
-        raise KeyError(f"'{name_or_stock_code}'에 해당하는 기업을 찾지 못했습니다.")
-    return entry["corp_code"]
+
+def get_stock_code(name_or_stock_code: str) -> str:
+    """회사명 또는 종목코드로 6자리 종목코드(주가 조회용)를 찾는다. 비상장사면 KeyError."""
+    stock_code = _find_entry(name_or_stock_code)["stock_code"]
+    if not stock_code:
+        raise KeyError(f"'{name_or_stock_code}'은(는) 상장 종목코드가 없습니다 (비상장사).")
+    return stock_code
 
 
 def get_company_overview(corp_code: str) -> dict:

@@ -1,6 +1,7 @@
 python-dotenv
 requests
 pandas
+pykrx
 
 # LLM / agent
 openai

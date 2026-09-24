@@ -11,6 +11,7 @@ from pathlib import Path
 
 from openai import OpenAI
 
+from .prompts import PREMISE_CHECK_RULE
 from .tools import TOOL_FUNCTIONS, TOOL_SCHEMAS
 
 MODEL = "gpt-5.4-nano"  # 저렴한 모델로 고정 (비용 최소화)
@@ -18,9 +19,12 @@ MAX_ITERATIONS = 7  # 계획서 §1.1: 무한 루프 방지 하드리밋 (원인
 LOG_PATH = Path(__file__).resolve().parent.parent.parent / "logs" / "agent_runs.md"
 
 SYSTEM_PROMPT = (
-    "너는 종목 리서치 어시스턴트야. get_financial_data(DART 재무 데이터)와 search_news(뉴스 검색) "
-    "두 도구를 상황에 맞게 골라서 호출해 질문에 답해. 숫자가 필요하면 get_financial_data, "
-    "실적 원인·전망·업계 이슈 같은 정성적 맥락이 필요하면 search_news를 써.\n\n"
+    "너는 종목 리서치 어시스턴트야. get_financial_data(DART 재무 데이터), search_news(뉴스 검색), "
+    "get_stock_price(주가·수익률·PER/PBR/시가총액) 세 도구를 상황에 맞게 골라서 호출해 질문에 답해. "
+    "재무 숫자가 필요하면 get_financial_data, 실적 원인·전망·업계 이슈 같은 정성적 맥락이 필요하면 "
+    "search_news, 주가가 오르내린 사실이나 밸류에이션(비싼지/싼지) 확인이 필요하면 get_stock_price를 "
+    "써.\n\n"
+    f"{PREMISE_CHECK_RULE}\n\n"
     "'실적/가격이 왜 이랬는지' 같은 원인을 물으면:\n"
     "1. 원인은 하나가 아닐 수 있다는 전제로 최소한 "
     "아래 서로 다른 카테고리 중 관련 있어 보이는 걸 각각 별도 검색으로 확인해봐 — 한 카테고리에서 "

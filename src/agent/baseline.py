@@ -1,21 +1,22 @@
-"""Phase 3: 단일 도구 RAG 베이스라인 (DART만 / News만).
+"""Phase 3: 단일 도구 RAG 베이스라인 (DART만 / News만 / 항상 3도구 전부).
 
-Phase 4의 멀티홉 에이전트(플래너+동적 도구선택) 전 단계로, 도구를 하나만 쓰는
-가장 단순한 RAG를 먼저 구축해 baseline 성능을 잰다 (Notion 계획서 §1.4 ablation 비교용).
+Phase 4의 멀티홉 에이전트(플래너+동적 도구선택) 전 단계로, 도구 선택 능력이 없는
+가장 단순한 RAG의 성능을 잰다 (Notion 계획서 §1.4 ablation 비교용).
+
+공정한 비교를 위해 도구 자체는 `tools.py`(Phase 4 에이전트와 동일)를 그대로 불러 쓴다 —
+baseline과 에이전트가 다른 건 "어떤 도구를 언제 쓰는지"뿐이어야 하기 때문.
 """
 
-import sqlite3
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from openai import OpenAI
 
-from ..data import dart_client as dc
-from ..data import news_client as nc
+from . import tools
+from .prompts import PREMISE_CHECK_RULE
 
 MODEL = "gpt-5.4-nano"  # 저렴한 모델로 고정 (베이스라인 단계에서 비용 최소화)
-DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "financials.db"
 LOG_PATH = Path(__file__).resolve().parent.parent.parent / "logs" / "baseline_experiments.md"
 
 
@@ -34,11 +35,6 @@ def _log_experiment(tool: str, question: str, prompt: str, answer: str, elapsed_
         f.write(entry)
 
 
-# reprt_code는 문자열/숫자로 정렬해도 분기 순서가 안 나옴 (1분기=11013 > 반기=11012).
-# 연도 내 실제 시간 순서로 정렬하기 위한 순위 매핑.
-_PERIOD_RANK = {"11013": 1, "11012": 2, "11014": 3, "11011": 4}
-_PERIOD_LABEL = {"11013": "1분기보고서", "11012": "반기보고서", "11014": "3분기보고서", "11011": "사업보고서(연간)"}
-
 _client = None
 
 
@@ -49,97 +45,97 @@ def _get_client() -> OpenAI:
     return _client
 
 
-def _fetch_latest_financials(corp_code: str, n_accounts: int = 20) -> list[dict]:
-    """로컬 DB(Phase 1 수집분)에서 가장 최근 보고서의 연결(CFS) 재무 항목을 가져온다."""
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        periods = conn.execute(
-            "SELECT DISTINCT bsns_year, reprt_code FROM financials WHERE corp_code=?",
-            (corp_code,),
-        ).fetchall()
-        if not periods:
-            return []
-        year, reprt_code = max(periods, key=lambda p: (int(p[0]), _PERIOD_RANK[p[1]]))
-        rows = conn.execute(
-            """
-            SELECT account_name, sj_name, thstrm_amount, thstrm_add_amount
-            FROM financials
-            WHERE corp_code=? AND bsns_year=? AND reprt_code=? AND fs_div='CFS'
-            LIMIT ?
-            """,
-            (corp_code, year, reprt_code, n_accounts),
-        ).fetchall()
-        return [
-            {
-                "account_name": r[0],
-                "sj_name": r[1],
-                "thstrm_amount": r[2],
-                "thstrm_add_amount": r[3],
-                "bsns_year": year,
-                "reprt_code": reprt_code,
-            }
-            for r in rows
-        ]
-    finally:
-        conn.close()
-
-
-def answer_with_dart(question: str, name_or_stock_code: str) -> str:
-    """DART 데이터만 근거로 질문에 답한다 (뉴스 없이). 로컬 DB에 없으면 빈 컨텍스트로 답함."""
-    start = time.perf_counter()  # 검색(DART 조회)부터 LLM 호출까지 전체 소요시간
-    corp_code = dc.get_corp_code(name_or_stock_code)
-    overview = dc.get_company_overview(corp_code)
-    facts = _fetch_latest_financials(corp_code)
-
-    if facts:
-        period_label = f"{facts[0]['bsns_year']}년 {_PERIOD_LABEL[facts[0]['reprt_code']]}"
-        header = f"{overview['corp_name']} ({period_label}, 연결재무제표 기준)"
-    else:
-        header = f"{overview['corp_name']} (로컬 DB에 저장된 재무 데이터 없음)"
-
-    def _describe(f: dict) -> str:
-        if f["sj_name"] == "재무상태표":  # BS: 시점 스냅샷 — "분기 단독/누적" 개념 자체가 안 맞음
-            return f"- {f['account_name']}: 기말 시점 기준 {f['thstrm_amount']:,}원"
-        # PL(손익계산서): 연간보고서는 thstrm_amount 자체가 이미 연간 누적치라 "분기 단독"이 틀림
-        thstrm_label = "연간 누적" if f["reprt_code"] == "11011" else "해당 분기 단독"
-        line = f"- {f['account_name']}: {thstrm_label} {f['thstrm_amount']:,}원"
-        if f["thstrm_add_amount"] is not None:
-            line += f" / 연초~해당 분기 누적 {f['thstrm_add_amount']:,}원"
-        return line
-
-    lines = [_describe(f) for f in facts]
-    context = header + "\n" + "\n".join(lines)
-    prompt = (
-        f"다음은 DART 공시 재무 데이터다:\n{context}\n\n"
-        f"이 데이터만 근거로 질문에 답해줘. 데이터에 없는 내용은 모른다고 답해. 질문: {question}"
-    )
+def _ask(prompt: str) -> str:
     resp = _get_client().chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
         max_completion_tokens=300,
     )
+    return resp.choices[0].message.content
+
+
+def answer_with_dart(question: str, name_or_stock_code: str) -> str:
+    """DART 데이터만 근거로 질문에 답한다 (뉴스/주가 없이)."""
+    start = time.perf_counter()
+    context = tools.get_financial_data(name_or_stock_code)
+    prompt = (
+        f"다음은 DART 공시 재무 데이터다:\n{context}\n\n"
+        f"{PREMISE_CHECK_RULE}\n\n"
+        f"이 데이터만 근거로 질문에 답해줘. 데이터에 없는 내용(예: 주가, 뉴스 맥락)은 "
+        f"모른다고 답해. 질문: {question}"
+    )
+    answer = _ask(prompt)
     elapsed = time.perf_counter() - start
-    answer = resp.choices[0].message.content
     _log_experiment("dart", question, prompt, answer, elapsed)
     return answer
 
 
-def answer_with_news(question: str, top_k: int = 5) -> str:
-    """뉴스 검색 결과만 근거로 질문에 답한다 (DART 없이)."""
-    start = time.perf_counter()  # 검색(뉴스 API+재정렬)부터 LLM 호출까지 전체 소요시간
-    articles = nc.search_news_reranked(question, candidate_display=20, top_k=top_k)
+def _build_search_query(question: str) -> str:
+    """질문 문장을 검색엔진에 적합한 짧은 검색어로 바꾸는 단발성 LLM 호출.
 
-    context = "\n".join(f"- [{i+1}] {a['title']}: {a['description']}" for i, a in enumerate(articles))
+    Phase 4 에이전트와 달리 재시도/재구성 없이 딱 한 번만 변환한다 — "단일 도구
+    baseline"이 순수 질문 문장을 그대로 검색어로 써서(구현 누락) 불공평하게 지는
+    걸 막기 위한 최소 보정. 도구를 동적으로 여러 번 쓰는 능력 자체는 여전히 없다.
+    """
     prompt = (
-        f"다음은 관련 뉴스 기사 목록이다:\n{context}\n\n"
-        f"이 기사들만 근거로 질문에 답하고, 사용한 기사 번호를 [1] 같은 형식으로 인용해줘. 질문: {question}"
+        "다음 질문을 뉴스 검색엔진에 넣을 짧은 검색어로 바꿔줘. "
+        "회사명과 핵심 키워드만 남기고, 다른 설명 없이 검색어만 출력해.\n\n"
+        f"질문: {question}"
     )
     resp = _get_client().chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
-        max_completion_tokens=300,
+        max_completion_tokens=50,
     )
+    return resp.choices[0].message.content.strip()
+
+
+def answer_with_news(question: str, top_k: int = 5) -> str:
+    """뉴스 검색 결과만 근거로 질문에 답한다 (DART/주가 없이)."""
+    start = time.perf_counter()  # 검색어 생성부터 LLM 최종 답변까지 전체 소요시간
+    search_query = _build_search_query(question)
+    context = tools.search_news(search_query)
+    prompt = (
+        f"다음은 관련 뉴스 기사 목록이다:\n{context}\n\n"
+        f"{PREMISE_CHECK_RULE}\n\n"
+        f"이 기사들만 근거로 질문에 답하고, 사용한 기사 번호를 [1] 같은 형식으로 인용해줘. "
+        f"기사에 없는 내용(예: 정확한 재무 수치)은 모른다고 답해. 질문: {question}"
+    )
+    answer = _ask(prompt)
     elapsed = time.perf_counter() - start
-    answer = resp.choices[0].message.content
-    _log_experiment("news", question, prompt, answer, elapsed)
+    _log_experiment("news", question, f"[검색어: {search_query}]\n\n{prompt}", answer, elapsed)
+    return answer
+
+
+def answer_with_all_tools(question: str, company: str) -> str:
+    """DART+뉴스+주가 세 도구를 질문 내용과 무관하게 항상 전부 불러 답한다.
+
+    "도구 선택 능력이 있는 게 그냥 도구를 다 부르는 것보다 나은가?"를 보여주기 위한
+    비교군 — 에이전트가 이기면 단순히 "정보가 많아서"가 아니라 "필요한 걸 골라 쓰고
+    필요하면 재시도하는 능력" 덕분이라는 걸 뒷받침한다.
+    """
+    start = time.perf_counter()
+    end = date.today().isoformat()
+    news_query = _build_search_query(question)
+    dart_context = tools.get_financial_data(company)
+    news_context = tools.search_news(news_query)
+    try:
+        price_context = tools.get_stock_price(company, (date.today() - timedelta(days=30)).isoformat(), end)
+    except Exception as e:  # noqa: BLE001 — 비상장사 등으로 주가 조회가 아예 불가능한 경우
+        price_context = f"조회 불가: {e}"
+
+    context = (
+        f"[DART 재무 데이터]\n{dart_context}\n\n"
+        f"[관련 뉴스 (검색어: {news_query})]\n{news_context}\n\n"
+        f"[주가 데이터 (최근 30일)]\n{price_context}"
+    )
+    prompt = (
+        f"다음은 세 가지 출처의 데이터다:\n{context}\n\n"
+        f"{PREMISE_CHECK_RULE}\n\n"
+        f"이 데이터만 근거로 질문에 답해줘. 관련 없는 출처는 무시하고, 데이터에 없는 "
+        f"내용은 모른다고 답해. 질문: {question}"
+    )
+    answer = _ask(prompt)
+    elapsed = time.perf_counter() - start
+    _log_experiment("all_tools", question, prompt, answer, elapsed)
     return answer
