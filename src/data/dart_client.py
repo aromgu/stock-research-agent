@@ -53,7 +53,7 @@ def _get_json(url: str, params: dict, retries: int = 3, backoff: float = 1.0) ->
         except requests.exceptions.JSONDecodeError as e:
             last_error = e
             time.sleep(backoff * (attempt + 1))
-    raise DartApiError(f"DART API가 {retries}번 재시도에도 유효한 JSON을 반환하지 않았습니다: {last_error}")
+    raise DartApiError("JSON_DECODE_FAILED", f"{retries}번 재시도에도 유효한 JSON을 반환하지 않았습니다: {last_error}")
 
 
 def _download_corp_code_index() -> dict:

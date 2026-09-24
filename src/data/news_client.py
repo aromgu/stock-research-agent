@@ -22,7 +22,8 @@ import html
 import json
 import os
 import re
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import requests
@@ -142,8 +143,76 @@ def rerank_by_similarity(query: str, items: list[dict], top_k: int = 5) -> list[
     return [{**item, "similarity_score": float(score)} for item, score in ranked[:top_k]]
 
 
-def search_news_reranked(query: str, candidate_display: int = 20, top_k: int = 5, sort: str = "date") -> list[dict]:
-    """News Retriever Tool 본체: 실시간 검색 후 쿼리 시점에 임베딩 재정렬해서 상위 top_k 반환."""
+def _parse_date_bound(value: str | None) -> datetime | None:
+    """"YYYY-MM-DD" 문자열을 UTC 자정 기준 datetime으로. 날짜 단위 필터라 시간대 오차는 무시."""
+    if value is None:
+        return None
+    return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+
+
+def _filter_by_date_range(items: list[dict], after: datetime | None, before: datetime | None) -> list[dict]:
+    result = []
+    for item in items:
+        pub = parsedate_to_datetime(item["pub_date"])
+        if after is not None and pub < after:
+            continue
+        if before is not None and pub > before:
+            continue
+        result.append(item)
+    return result
+
+
+def _dedupe_similar_titles(items: list[dict], threshold: float = 0.85) -> list[dict]:
+    """통신사 배포 기사 등 제목이 거의 동일한 중복을 제거 (먼저 나온 것만 남김).
+
+    유사도만으로 top_k를 뽑으면 같은 사건을 베낀 기사가 슬롯을 다 차지해 다른 원인이
+    있어도 못 보일 수 있어, 재정렬 전에 후보군에서부터 미리 다양성을 확보한다.
+    """
+    from difflib import SequenceMatcher
+
+    kept = []
+    for item in items:
+        if any(SequenceMatcher(None, item["title"], k["title"]).ratio() >= threshold for k in kept):
+            continue
+        kept.append(item)
+    return kept
+
+
+def search_news_reranked(
+    query: str,
+    candidate_display: int = 20,
+    top_k: int = 5,
+    sort: str = "date",
+    after: str | None = None,
+    before: str | None = None,
+    recency_days: int = 30,
+) -> list[dict]:
+    """News Retriever Tool 본체: 실시간 검색 -> 날짜 범위 필터 -> 중복 제거 -> 임베딩 재정렬.
+
+    after/before("YYYY-MM-DD")를 지정하면 그 날짜 범위의 기사만 검색한다. 예: 2026년
+    반기(4~6월) 실적 원인을 찾을 때는 "오늘 기준 최근 N일"이 아니라 그 분기 기간을 기준으로
+    검색해야 한다 (원인이 된 사건이 오늘보다 훨씬 전, 분기 중간에 있을 수 있음).
+
+    주의: NAVER 검색은 인기 검색어일수록 sort=date/sim 둘 다 최근 며칠치로 결과가 꽉 차서,
+    display=100을 받아도 몇 달 전 과거로는 사실상 도달하지 못하는 경우가 흔하다(직접 확인함).
+    그래서 after/before를 "명시적으로" 지정했는데 그 범위 안 기사가 하나도 없으면, 엉뚱한
+    최신 기사로 조용히 바꿔치기하지 않고 빈 리스트를 그대로 반환한다 (호출부가 "그 기간
+    기사를 못 찾았다"는 걸 알아야 하므로). after/before를 생략했을 때(기본 recency_days 모드)만
+    검색어가 너무 좁아 후보가 부족하면 필터 없는 전체 후보로 관대하게 폴백한다.
+    """
     candidates = search_news(query, display=candidate_display, sort=sort)
-    return rerank_by_similarity(query, candidates, top_k=top_k)
+    explicit_range = bool(after or before)
+
+    if explicit_range:
+        after_dt, before_dt = _parse_date_bound(after), _parse_date_bound(before)
+    else:
+        after_dt, before_dt = datetime.now(timezone.utc) - timedelta(days=recency_days), None
+
+    filtered = _filter_by_date_range(candidates, after_dt, before_dt)
+    if explicit_range:
+        pool = filtered  # 못 찾았으면 빈 채로 - 엉뚱한 기간 기사로 바꿔치기하지 않음
+    else:
+        pool = filtered if len(filtered) >= top_k else candidates
+    deduped = _dedupe_similar_titles(pool)
+    return rerank_by_similarity(query, deduped, top_k=top_k)
 
