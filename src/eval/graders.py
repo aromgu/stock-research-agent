@@ -104,6 +104,16 @@ def _per_ground_truth(nt: dict) -> float | None:
     return fund[nt.get("field", "PER")] if fund else None
 
 
+def _peer_top_ground_truth(nt: dict) -> tuple[str, float] | None:
+    """업종 1위 (회사명, 지표 값). 에이전트의 compare_peers와 같은 계산을 써서 정답을 만든다."""
+    from ..agent import tools  # 채점기 로드 시 에이전트 도구 전체를 불러오지 않도록 필요할 때만 import
+
+    _, members, _ = tools._resolve_peer_group(nt["group"])
+    scored = [(c["name"], tools._peer_metric(c["corp_code"], nt["metric"])[0]) for c in members]
+    scored = [s for s in scored if s[1] is not None]
+    return max(scored, key=lambda s: s[1]) if scored else None
+
+
 def _parse_composite(text: str) -> int | None:
     """'74조 6,600억' 같은 조/억/만 조합 표현을 원 단위 정수로 변환."""
     total = 0.0
@@ -230,6 +240,16 @@ def grade_numeric(answer: str, numeric_target: dict | None) -> dict:
         correct = any(abs(c - truth) < _PER_TOLERANCE_PP for c in candidates)
         return {"applicable": True, "correct": correct, "ground_truth": round(truth, 2), "candidates": candidates}
 
+    if kind == "peer_top":
+        # 업종 1위 질문: 1위 회사 이름이 답변에 있고, 그 회사의 지표 값(%)도 맞아야 정답
+        truth = _peer_top_ground_truth(numeric_target)
+        candidates = extract_percentages(answer)
+        if truth is None:
+            return {"applicable": True, "correct": None, "ground_truth": None, "candidates": candidates}
+        name, value = truth
+        correct = name in answer and any(abs(c - value) < _RATIO_TOLERANCE_PP for c in candidates)
+        return {"applicable": True, "correct": correct, "ground_truth": (name, round(value, 2)), "candidates": candidates}
+
     if kind == "price_direction":
         truth = _price_return_ground_truth(numeric_target)
         if truth is None:
@@ -303,6 +323,11 @@ def describe_reference(numeric_target: dict | None) -> str | None:
         if truth is None:
             return None
         return f"{nt['company']} {nt['on']} 기준 {nt.get('field', 'PER')} {truth:.2f}배"
+    if kind == "peer_top":
+        truth = _peer_top_ground_truth(nt)
+        if truth is None:
+            return None
+        return f"{nt['group']} 업종 {nt['metric']} 1위: {truth[0]} ({truth[1]:.2f}%, 각 회사 가장 최근 보고서 누적 기준)"
     raise ValueError(f"알 수 없는 numeric_target kind: {kind}")
 
 

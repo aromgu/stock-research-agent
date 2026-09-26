@@ -65,6 +65,56 @@ def _recent_period_candidates(as_of: date, n_candidates: int = 8) -> list[tuple[
     return candidates
 
 
+def _store_report(conn: sqlite3.Connection, corp_code: str, overview: dict, year: str, reprt_code: str) -> bool:
+    """보고서 하나를 DART에서 받아 DB에 저장. 아직 공시 안 된 보고서(status=013)면 False."""
+    try:
+        rows = dc.get_financial_statement(corp_code, year, reprt_code)
+    except dc.DartApiError as e:
+        if e.status == "013":  # 아직 공시 안 됨 - 정상 상황
+            return False
+        raise
+
+    now = datetime.now().isoformat(timespec="seconds")
+    conn.executemany(
+        """
+        INSERT OR REPLACE INTO financials
+            (corp_code, corp_name, stock_code, bsns_year, reprt_code, fs_div,
+             fs_name, sj_name, account_name, thstrm_amount, frmtrm_amount, bfefrmtrm_amount,
+             thstrm_add_amount, frmtrm_add_amount, collected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                corp_code,
+                overview["corp_name"],
+                overview["stock_code"],
+                year,
+                reprt_code,
+                row["fs_div"],
+                row["fs_name"],
+                row["sj_name"],
+                row["account_name"],
+                row["thstrm_amount"],
+                row["frmtrm_amount"],
+                row["bfefrmtrm_amount"],
+                row["thstrm_add_amount"],
+                row["frmtrm_add_amount"],
+                now,
+            )
+            for row in rows
+        ],
+    )
+    conn.commit()
+    return True
+
+
+def _connect() -> sqlite3.Connection:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    _init_db(conn)
+    return conn
+
+
 def collect_recent_quarters(name_or_stock_code: str, n_quarters: int = 4) -> int:
     """기업의 최근 n_quarters개 보고서를 DART에서 받아 로컬 DB에 저장.
 
@@ -73,59 +123,28 @@ def collect_recent_quarters(name_or_stock_code: str, n_quarters: int = 4) -> int
     """
     corp_code = dc.get_corp_code(name_or_stock_code)
     overview = dc.get_company_overview(corp_code)
-
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    _init_db(conn)
-
+    conn = _connect()
     collected = 0
     try:
         for year, reprt_code in _recent_period_candidates(date.today()):
             if collected >= n_quarters:
                 break
-            try:
-                rows = dc.get_financial_statement(corp_code, year, reprt_code)
-            except dc.DartApiError as e:
-                if e.status == "013":  # 아직 공시 안 됨 - 정상 상황, 다음 후보로
-                    continue
-                raise
-
-            now = datetime.now().isoformat(timespec="seconds")
-            conn.executemany(
-                """
-                INSERT OR REPLACE INTO financials
-                    (corp_code, corp_name, stock_code, bsns_year, reprt_code, fs_div,
-                     fs_name, sj_name, account_name, thstrm_amount, frmtrm_amount, bfefrmtrm_amount,
-                     thstrm_add_amount, frmtrm_add_amount, collected_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    (
-                        corp_code,
-                        overview["corp_name"],
-                        overview["stock_code"],
-                        year,
-                        reprt_code,
-                        row["fs_div"],
-                        row["fs_name"],
-                        row["sj_name"],
-                        row["account_name"],
-                        row["thstrm_amount"],
-                        row["frmtrm_amount"],
-                        row["bfefrmtrm_amount"],
-                        row["thstrm_add_amount"],
-                        row["frmtrm_add_amount"],
-                        now,
-                    )
-                    for row in rows
-                ],
-            )
-            conn.commit()
-            collected += 1
+            if _store_report(conn, corp_code, overview, year, reprt_code):
+                collected += 1
     finally:
         conn.close()
-
     return collected
+
+
+def fetch_report(name_or_stock_code: str, year: str, reprt_code: str) -> bool:
+    """특정 보고서 하나를 DART에서 받아 저장 (도구가 DB에 없는 기간을 요청받았을 때 사용)."""
+    corp_code = dc.get_corp_code(name_or_stock_code)
+    overview = dc.get_company_overview(corp_code)
+    conn = _connect()
+    try:
+        return _store_report(conn, corp_code, overview, str(year), reprt_code)
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

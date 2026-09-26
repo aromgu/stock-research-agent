@@ -7,7 +7,9 @@ pykrx
 openai
 
 # embeddings & vector db (뉴스 재정렬 / 평가용 코퍼스 인덱싱)
-sentence-transformers
+# bge-m3를 transformers로 직접 로드 (sentence-transformers는 불필요한 pyarrow.dataset DLL을 불러와 뺐음)
+transformers
+torch
 chromadb
 
 # eval (선택, 정성적 채점용)

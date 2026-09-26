@@ -1,0 +1,479 @@
+{
+ "as_of": "2026-09-23",
+ "companies": [
+  {
+   "name": "삼성전자",
+   "stock_code": "005930",
+   "corp_code": "00126380",
+   "groups": [
+    "반도체 밸류체인",
+    "코스피 시가총액 상위"
+   ],
+   "segment": "메모리",
+   "induty_code": "264"
+  },
+  {
+   "name": "SK하이닉스",
+   "stock_code": "000660",
+   "corp_code": "00164779",
+   "groups": [
+    "반도체 밸류체인",
+    "코스피 시가총액 상위"
+   ],
+   "segment": "메모리",
+   "induty_code": "2612"
+  },
+  {
+   "name": "DB하이텍",
+   "stock_code": "000990",
+   "corp_code": "00160843",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "파운드리",
+   "induty_code": "2611"
+  },
+  {
+   "name": "원익IPS",
+   "stock_code": "240810",
+   "corp_code": "01135941",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "전공정 장비",
+   "induty_code": "292"
+  },
+  {
+   "name": "주성엔지니어링",
+   "stock_code": "036930",
+   "corp_code": "00252135",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "전공정 장비",
+   "induty_code": "29229"
+  },
+  {
+   "name": "유진테크",
+   "stock_code": "084370",
+   "corp_code": "00531014",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "전공정 장비",
+   "induty_code": "29271"
+  },
+  {
+   "name": "피에스케이",
+   "stock_code": "319660",
+   "corp_code": "01365825",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "전공정 장비",
+   "induty_code": "29271"
+  },
+  {
+   "name": "테스",
+   "stock_code": "095610",
+   "corp_code": "00524421",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "전공정 장비",
+   "induty_code": "29271"
+  },
+  {
+   "name": "HPSP",
+   "stock_code": "403870",
+   "corp_code": "01288827",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "전공정 장비",
+   "induty_code": "29271"
+  },
+  {
+   "name": "이오테크닉스",
+   "stock_code": "039030",
+   "corp_code": "00246417",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "전공정 장비",
+   "induty_code": "29271"
+  },
+  {
+   "name": "한미반도체",
+   "stock_code": "042700",
+   "corp_code": "00161383",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "후공정 장비",
+   "induty_code": "29271"
+  },
+  {
+   "name": "테크윙",
+   "stock_code": "089030",
+   "corp_code": "00535676",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "후공정 장비",
+   "induty_code": "29271"
+  },
+  {
+   "name": "솔브레인",
+   "stock_code": "357780",
+   "corp_code": "01489648",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "소재",
+   "induty_code": "204"
+  },
+  {
+   "name": "동진쎄미켐",
+   "stock_code": "005290",
+   "corp_code": "00118804",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "소재",
+   "induty_code": "20129"
+  },
+  {
+   "name": "원익머트리얼즈",
+   "stock_code": "104830",
+   "corp_code": "00623661",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "소재",
+   "induty_code": "20121"
+  },
+  {
+   "name": "후성",
+   "stock_code": "093370",
+   "corp_code": "00595191",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "소재",
+   "induty_code": "20129"
+  },
+  {
+   "name": "티씨케이",
+   "stock_code": "064760",
+   "corp_code": "00245472",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "소재",
+   "induty_code": "23999"
+  },
+  {
+   "name": "리노공업",
+   "stock_code": "058470",
+   "corp_code": "00369657",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "부품·테스트",
+   "induty_code": "2629"
+  },
+  {
+   "name": "ISC",
+   "stock_code": "095340",
+   "corp_code": "00572905",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "부품·테스트",
+   "induty_code": "465"
+  },
+  {
+   "name": "하나마이크론",
+   "stock_code": "067310",
+   "corp_code": "00445054",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "패키징·기판",
+   "induty_code": "2611"
+  },
+  {
+   "name": "네패스",
+   "stock_code": "033640",
+   "corp_code": "00227333",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "패키징·기판",
+   "induty_code": "261"
+  },
+  {
+   "name": "심텍",
+   "stock_code": "222800",
+   "corp_code": "01095722",
+   "groups": [
+    "반도체 밸류체인"
+   ],
+   "segment": "패키징·기판",
+   "induty_code": "2622"
+  },
+  {
+   "name": "SK스퀘어",
+   "stock_code": "402340",
+   "corp_code": "01596425",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "64992"
+  },
+  {
+   "name": "삼성전기",
+   "stock_code": "009150",
+   "corp_code": "00126371",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "2622"
+  },
+  {
+   "name": "LG에너지솔루션",
+   "stock_code": "373220",
+   "corp_code": "01515323",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "28202"
+  },
+  {
+   "name": "현대자동차",
+   "stock_code": "005380",
+   "corp_code": "00164742",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "30121"
+  },
+  {
+   "name": "삼성바이오로직스",
+   "stock_code": "207940",
+   "corp_code": "00877059",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "211"
+  },
+  {
+   "name": "KB금융",
+   "stock_code": "105560",
+   "corp_code": "00688996",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "64992"
+  },
+  {
+   "name": "삼성물산",
+   "stock_code": "028260",
+   "corp_code": "00149655",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "467"
+  },
+  {
+   "name": "삼성생명",
+   "stock_code": "032830",
+   "corp_code": "00126256",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "65110"
+  },
+  {
+   "name": "한화에어로스페이스",
+   "stock_code": "012450",
+   "corp_code": "00126566",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "31321"
+  },
+  {
+   "name": "두산에너빌리티",
+   "stock_code": "034020",
+   "corp_code": "00159616",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "29119"
+  },
+  {
+   "name": "신한지주",
+   "stock_code": "055550",
+   "corp_code": "00382199",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "64992"
+  },
+  {
+   "name": "HD현대중공업",
+   "stock_code": "329180",
+   "corp_code": "01390344",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "31113"
+  },
+  {
+   "name": "기아",
+   "stock_code": "000270",
+   "corp_code": "00106641",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "30121"
+  },
+  {
+   "name": "SK",
+   "stock_code": "034730",
+   "corp_code": "00181712",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "64992"
+  },
+  {
+   "name": "삼성SDI",
+   "stock_code": "006400",
+   "corp_code": "00126362",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "28202"
+  },
+  {
+   "name": "셀트리온",
+   "stock_code": "068270",
+   "corp_code": "00413046",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "21100"
+  },
+  {
+   "name": "하나금융지주",
+   "stock_code": "086790",
+   "corp_code": "00547583",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "64992"
+  },
+  {
+   "name": "LG전자",
+   "stock_code": "066570",
+   "corp_code": "00401731",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "264"
+  },
+  {
+   "name": "현대모비스",
+   "stock_code": "012330",
+   "corp_code": "00164788",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "303"
+  },
+  {
+   "name": "엘에스일렉트릭",
+   "stock_code": "010120",
+   "corp_code": "00105855",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "28121"
+  },
+  {
+   "name": "NAVER",
+   "stock_code": "035420",
+   "corp_code": "00266961",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "63120"
+  },
+  {
+   "name": "삼성화재해상보험",
+   "stock_code": "000810",
+   "corp_code": "00139214",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "65121"
+  },
+  {
+   "name": "효성중공업",
+   "stock_code": "298040",
+   "corp_code": "01316245",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "281"
+  },
+  {
+   "name": "우리금융지주",
+   "stock_code": "316140",
+   "corp_code": "01350869",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "64992"
+  },
+  {
+   "name": "HD현대일렉트릭",
+   "stock_code": "267260",
+   "corp_code": "01205851",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "281"
+  },
+  {
+   "name": "SK이노베이션",
+   "stock_code": "096770",
+   "corp_code": "00631518",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "192"
+  },
+  {
+   "name": "POSCO홀딩스",
+   "stock_code": "005490",
+   "corp_code": "00155319",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "2411"
+  },
+  {
+   "name": "두산",
+   "stock_code": "000150",
+   "corp_code": "00117212",
+   "groups": [
+    "코스피 시가총액 상위"
+   ],
+   "induty_code": "26221"
+  }
+ ]
+}

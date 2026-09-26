@@ -40,22 +40,29 @@ LOG_PATH = Path(__file__).resolve().parent.parent.parent / "logs" / "phase5_eval
 SUMMARY_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "phase5_summary_export.md"
 RUNS_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "phase5_runs_export.jsonl"
 
-_TOOL_TO_SOURCE = {"get_financial_data": "dart", "search_news": "news", "get_stock_price": "price"}
+# compare_peers도 DART 재무 데이터를 쓰는 도구라 인용 출처는 dart로 본다
+_TOOL_TO_SOURCE = {
+    "get_financial_data": "dart",
+    "search_news": "news",
+    "get_stock_price": "price",
+    "compare_peers": "dart",
+}
 
 APPROACHES = ["dart_baseline", "news_baseline", "all_tools_baseline", "agent"]
 APPROACH_LABEL = {
     "dart_baseline": "Phase 3 · DART-only 고정 파이프라인",
     "news_baseline": "Phase 3 · News-only 고정 파이프라인",
-    "all_tools_baseline": "Phase 3 · 항상 3도구 전부 고정 파이프라인",
+    "all_tools_baseline": "Phase 3 · 항상 모든 도구 고정 파이프라인",
     "agent": "Phase 4 · 플래너 에이전트",
 }
 # 쌍대 비교는 에이전트 vs 가장 강한 비교군 하나만 (심판 호출 = 질문 수 × 2회, 순서 바꿔 두 번)
 PAIRWISE_PAIR = ("agent", "all_tools_baseline")
 
 # 요약 표에 보여줄 순서 (주 지표가 먼저)
-_SPLITS = (("heldout_v2", "held-out v2"), ("heldout", "held-out v1"), ("tuning", "튜닝 셋"))
+_SPLITS = (("heldout_v3", "held-out v3"), ("heldout_v2", "held-out v2"), ("heldout", "held-out v1"), ("tuning", "튜닝 셋"))
 _SPLIT_NOTE = {
-    "heldout_v2": "결과를 보기 전에 확정, 현재 주 지표",
+    "heldout_v3": "종목 확장·업종 비교 이후 결과를 보기 전에 확정, 새 기능을 묻는 현재 주 지표",
+    "heldout_v2": "결과를 보기 전에 확정했으나 이후 연도 지정 결함을 v2에서 발견해 고침",
     "heldout": "h5를 보고 에이전트·채점을 고쳐 일부 오염됨",
     "tuning": "이 질문들을 보고 프롬프트·채점기를 고쳤음 — 과대평가 가능",
 }
@@ -92,6 +99,7 @@ def _run_agent(gq: dict) -> dict:
         "answer": result["answer"],
         "draft_answer": result["draft_answer"],
         "financial_guard_triggered": result["financial_guard_triggered"],
+        "usage": result["usage"],
         "context": context,
         "predicted_sources": predicted,
         "elapsed": elapsed,
@@ -189,6 +197,7 @@ def _generate(questions: list[dict], approaches: list[str], resume: bool) -> Non
                 # 에이전트만 있는 필드 (검증 단계 전 초안, 재무 도구 강제 여부)
                 "draft_answer": run.get("draft_answer"),
                 "financial_guard_triggered": run.get("financial_guard_triggered"),
+                "usage": run.get("usage", {}),  # 모델별 토큰 사용량 (비용 비교용)
             }
             _save_runs(runs)
             print(f"[generated] {gq['id']} / {approach} ({run['elapsed']:.1f}s)")
@@ -250,6 +259,7 @@ def main() -> None:
                     "deferred": is_deferred_answer(run["answer"]),
                     "judge_pass": judge["pass"],
                     "elapsed": run["elapsed"],
+                    "usage": run.get("usage", {}),
                     **analyze_trajectory(run),
                 }
             )
@@ -322,6 +332,27 @@ def _trajectory_table(rows: list[dict]) -> list[str]:
     return lines
 
 
+def _usage_table(rows: list[dict]) -> list[str]:
+    """방식별 질문당 평균 LLM 호출 수와 토큰 (모델별). 사용량 기록이 없는 옛 실행은 제외."""
+    lines = [
+        "| 방식 | 모델 | 질문당 LLM 호출 | 질문당 입력 토큰 | 그중 캐시 적중 | 질문당 출력 토큰 |",
+        "|---|---|---|---|---|---|",
+    ]
+    for approach in APPROACHES:
+        rs = [r for r in rows if r["approach"] == approach and r.get("usage")]
+        if not rs:
+            continue
+        for model in sorted({m for r in rs for m in r["usage"]}):
+            tot = {k: sum(r["usage"].get(model, {}).get(k, 0) for r in rs) for k in ("calls", "prompt", "cached", "completion")}
+            n = len(rs)
+            cached_pct = f"{tot['cached'] / tot['prompt'] * 100:.0f}%" if tot["prompt"] else "-"
+            lines.append(
+                f"| {APPROACH_LABEL[approach]} | {model} | {tot['calls'] / n:.1f} | {tot['prompt'] / n:,.0f} "
+                f"| {cached_pct} | {tot['completion'] / n:,.0f} |"
+            )
+    return lines
+
+
 def _pairwise_table(pairwise_rows: list[dict]) -> list[str]:
     a, b = PAIRWISE_PAIR
     lines = [
@@ -355,6 +386,8 @@ def _write_summary(rows: list[dict], pairwise_rows: list[dict]) -> None:
         *_pairwise_table(pairwise_rows),
         "\n## 도구 호출 경로 (전체 질문)\n",
         *_trajectory_table(rows),
+        "\n## LLM 사용량 (전체 질문, 질문당 평균)\n",
+        *_usage_table(rows),
         "\n## 질문별 상세\n",
         "| 질문 | 구분 | 방식 | 예측 출처 | 정답 출처 | 숫자 정답 | 심판 | 도구 호출 | 소요(초) |",
         "|---|---|---|---|---|---|---|---|---|",

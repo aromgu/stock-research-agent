@@ -91,6 +91,32 @@ class TestCitation(unittest.TestCase):
         self.assertIn("일치하는 수치가 있음", describe_numeric_check({"applicable": True, "correct": True}))
 
 
+class TestDartAmountParsing(unittest.TestCase):
+    def test_dash_and_negative(self):
+        from src.data.dart_client import _parse_amount
+
+        self.assertIsNone(_parse_amount("-"))  # 보험사 등이 빈 금액을 "-"로 보냄 (수집이 멈췄던 버그)
+        self.assertIsNone(_parse_amount(""))
+        self.assertEqual(_parse_amount("-1,234"), -1234)
+        self.assertEqual(_parse_amount("98,152,891,000,000"), 98_152_891_000_000)
+
+
+class TestPeerGroupResolution(unittest.TestCase):
+    def test_segment_phrases(self):
+        from src.agent.tools import _resolve_peer_group
+
+        # 에이전트가 실제로 "반도체 소재"로 불렀다가 업종을 못 찾았던 버그 (held-out v3_3)
+        label, members, _ = _resolve_peer_group("반도체 소재")
+        self.assertIn("소재", label)
+        self.assertIn("티씨케이", [m["name"] for m in members])
+        label, members, _ = _resolve_peer_group("반도체 장비주")  # 전공정·후공정 장비를 합쳐 비교
+        self.assertIn("전공정 장비", label)
+        self.assertIn("후공정 장비", label)
+        self.assertIn("한미반도체", [m["name"] for m in members])
+        label, _, _ = _resolve_peer_group("전공정 장비")  # 업종 이름을 정확히 말하면 그 업종만
+        self.assertNotIn("후공정", label)
+
+
 class TestFinancialGuard(unittest.TestCase):
     def test_guard_condition(self):
         from src.agent.planner import _needs_financial_data

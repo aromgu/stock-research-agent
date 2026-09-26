@@ -22,12 +22,17 @@ import html
 import json
 import os
 import re
+import sqlite3
+import threading
 from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
+import numpy as np
 import requests
 from dotenv import load_dotenv
+
+from . import cache
 
 load_dotenv()  # .env 파일을 명시적으로 로드하지 않으면 셸에 키를 직접 export한 세션에서만 동작함
 
@@ -95,7 +100,7 @@ def search_news(query: str, display: int = 10, sort: str = "date", start: int = 
     resp.raise_for_status()
     data = resp.json()
 
-    return [
+    items = [
         {
             "title": _clean_text(item["title"]),
             "description": _clean_text(item["description"]),
@@ -105,29 +110,125 @@ def search_news(query: str, display: int = 10, sort: str = "date", start: int = 
         }
         for item in data.get("items", [])
     ]
+    _archive(items, query)
+    return items
+
+
+# --- 뉴스 아카이브 (메모리) ---
+# NAVER 검색은 결과를 최대 1,000건까지만 보여줘서, 인기 종목은 몇 달 전 기사에 닿지 못한다. 한 번 가져온
+# 기사는 전부 로컬에 쌓아두고, 기간을 지정한 검색에서 NAVER 결과와 합쳐 쓴다. 시간이 갈수록 과거 기사가
+# 쌓여 검색 깊이 한계가 완화된다 (배치 수집기가 핵심 종목 뉴스를 미리 모으면 효과가 더 커진다).
+
+_ARCHIVE_DDL = (
+    "CREATE TABLE IF NOT EXISTS news_archive (link TEXT PRIMARY KEY, title TEXT, description TEXT, "
+    "originallink TEXT, pub_date TEXT, pub_ts REAL, query TEXT, fetched_at REAL)"
+)
+_ARCHIVE_SCAN_LIMIT = 5000  # 한 기간에서 훑어볼 최대 기사 수 (최신순)
+
+
+def _archive_connect() -> sqlite3.Connection:
+    cache.CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(cache.CACHE_PATH, timeout=30)
+    conn.execute(_ARCHIVE_DDL)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_news_archive_ts ON news_archive(pub_ts)")
+    return conn
+
+
+def _archive(items: list[dict], query: str) -> None:
+    if not items:
+        return
+    now = datetime.now(timezone.utc).timestamp()
+    conn = _archive_connect()
+    try:
+        conn.executemany(
+            "INSERT OR IGNORE INTO news_archive VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (i["link"], i["title"], i["description"], i["originallink"], i["pub_date"],
+                 parsedate_to_datetime(i["pub_date"]).timestamp(), query, now)
+                for i in items
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _archive_candidates(query: str, after: datetime | None, before: datetime | None) -> list[dict]:
+    """아카이브에서 기간 안에 있고 검색어 단어가 하나라도 들어간 기사."""
+    tokens = [t for t in query.split() if len(t) >= 2]
+    if not tokens:
+        return []
+    lo = after.timestamp() if after else 0
+    hi = before.timestamp() if before else datetime.now(timezone.utc).timestamp()
+    conn = _archive_connect()
+    try:
+        rows = conn.execute(
+            "SELECT title, description, link, originallink, pub_date FROM news_archive "
+            "WHERE pub_ts BETWEEN ? AND ? ORDER BY pub_ts DESC LIMIT ?",
+            (lo, hi, _ARCHIVE_SCAN_LIMIT),
+        ).fetchall()
+    finally:
+        conn.close()
+    items = [dict(zip(("title", "description", "link", "originallink", "pub_date"), r)) for r in rows]
+    return [i for i in items if any(t in f"{i['title']} {i['description']}" for t in tokens)]
 
 
 _EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
 _embedding_model = None  # 첫 호출 때만 로드 (약 2GB, DART만 쓰는 코드에선 불필요한 로딩 방지)
+_tokenizer = None
+_EMBED_BATCH_SIZE = 16
+_model_lock = threading.Lock()
 
 
 def _get_embedding_model():
-    global _embedding_model
-    if _embedding_model is None:
-        from sentence_transformers import SentenceTransformer
+    """bge-m3를 transformers로 직접 로드한다.
 
-        _embedding_model = SentenceTransformer(_EMBEDDING_MODEL_NAME)
-    return _embedding_model
+    예전엔 sentence-transformers를 썼는데, 이 라이브러리는 import만 해도 학습용 데이터셋 도구(pyarrow.dataset)의
+    DLL을 불러온다. 2026-09-26 Windows 애플리케이션 제어 정책이 그 DLL을 차단해 뉴스 검색 전체가 멈췄다.
+    임베딩 계산에는 데이터셋 기능이 필요 없어서 transformers로 같은 계산을 직접 한다.
+    """
+    global _embedding_model, _tokenizer
+    with _model_lock:  # 도구를 병렬 실행하면 두 스레드가 동시에 2GB 모델을 로드할 수 있어 잠근다
+        if _embedding_model is None:
+            from transformers import AutoModel, AutoTokenizer
+
+            _tokenizer = AutoTokenizer.from_pretrained(_EMBEDDING_MODEL_NAME)
+            _embedding_model = AutoModel.from_pretrained(_EMBEDDING_MODEL_NAME).eval()
+    return _tokenizer, _embedding_model
 
 
 def embed_texts(texts: list[str]):
     """bge-m3로 텍스트 리스트를 정규화된 임베딩(코사인 유사도용)으로 변환. numpy.ndarray 반환.
 
-    News Retriever Tool의 쿼리타임 재정렬과 평가용 고정 코퍼스 인덱싱(collect_news_corpus.py)이
-    모델 로딩 로직을 공유하기 위한 공개 헬퍼.
+    bge-m3의 문장 벡터(dense)는 첫 토큰(CLS)의 마지막 층 출력을 L2 정규화한 값이다 — sentence-transformers가
+    내부에서 하던 계산과 같다. News Retriever Tool의 쿼리타임 재정렬과 평가용 고정 코퍼스 인덱싱
+    (collect_news_corpus.py)이 모델 로딩 로직을 공유하기 위한 공개 헬퍼.
     """
-    model = _get_embedding_model()
-    return model.encode(texts, normalize_embeddings=True)
+    # 같은 기사를 여러 검색에서 다시 임베딩하지 않도록 캐시한다 (재정렬 지연의 대부분이 임베딩 계산)
+    keys = [cache.make_key(_EMBEDDING_MODEL_NAME, t) for t in texts]
+    cached = cache.get_embeddings(keys)
+    missing = [i for i, k in enumerate(keys) if k not in cached]
+    if missing:
+        computed = _compute_embeddings([texts[i] for i in missing])
+        new = {keys[i]: vec for i, vec in zip(missing, computed)}
+        cache.put_embeddings(new)
+        cached.update(new)
+    return np.stack([cached[k] for k in keys])
+
+
+def _compute_embeddings(texts: list[str]):
+    import torch
+
+    tokenizer, model = _get_embedding_model()
+    chunks = []
+    with torch.no_grad():
+        for i in range(0, len(texts), _EMBED_BATCH_SIZE):
+            batch = tokenizer(
+                texts[i : i + _EMBED_BATCH_SIZE], padding=True, truncation=True, max_length=512, return_tensors="pt"
+            )
+            cls = model(**batch).last_hidden_state[:, 0]
+            chunks.append(torch.nn.functional.normalize(cls, dim=-1))
+    return torch.cat(chunks).numpy()
 
 
 def rerank_by_similarity(query: str, items: list[dict], top_k: int = 5) -> list[dict]:
@@ -239,10 +340,17 @@ def search_news_reranked(
     검색어가 너무 좁아 후보가 부족하면 필터 없는 전체 후보로 관대하게 폴백한다.
     """
     explicit_range = bool(after or before)
+    key = cache.make_key(query, candidate_display, top_k, sort, after, before, None if explicit_range else recency_days)
+    hit = cache.get("news_reranked", key)
+    if hit is not None:
+        return hit
 
     if explicit_range:
         after_dt, before_dt = _parse_date_bound(after), _parse_date_bound(before)
         candidates = _collect_paged(query, candidate_display, sort, after_dt, before_dt)
+        # 예전에 가져온 기사(아카이브)도 후보에 합친다 — NAVER가 지금은 더 이상 보여주지 않는 과거 기사 포함
+        seen = {c["link"] for c in candidates}
+        candidates += [a for a in _archive_candidates(query, after_dt, before_dt) if a["link"] not in seen]
     else:
         after_dt, before_dt = datetime.now(timezone.utc) - timedelta(days=recency_days), None
         candidates = search_news(query, display=candidate_display, sort=sort)
@@ -253,5 +361,12 @@ def search_news_reranked(
     else:
         pool = filtered if len(filtered) >= top_k else candidates
     deduped = _dedupe_similar_titles(_lexical_prefilter(query, pool, _RERANK_POOL_LIMIT * 2))
-    return rerank_by_similarity(query, _lexical_prefilter(query, deduped, _RERANK_POOL_LIMIT), top_k=top_k)
+    result = rerank_by_similarity(query, _lexical_prefilter(query, deduped, _RERANK_POOL_LIMIT), top_k=top_k)
+
+    # 이미 끝난 기간(종료일이 이틀 넘게 지난 기간)의 결과는 바뀌지 않으니 계속 쓰고, 최근 기간은 짧게 쓴다.
+    # 빈 결과는 나중에 아카이브가 채워질 수 있으므로 영구 저장하지 않는다.
+    settled = explicit_range and before is not None and before < (date.today() - timedelta(days=2)).isoformat()
+    ttl = None if settled and result else (3600 if explicit_range else 1800)
+    cache.put("news_reranked", key, result, ttl)
+    return result
 

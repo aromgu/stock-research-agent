@@ -8,6 +8,7 @@ DART의 모든 조회 API는 종목코드(예: 005930)가 아니라 DART 고유�
 로컬에 캐싱해 처리한다. 응답 구조는 Notion "DART API 데이터 구조 정리 (Phase 1)" 참고.
 """
 
+import difflib
 import io
 import json
 import os
@@ -82,17 +83,29 @@ def _download_corp_code_index() -> dict:
     return {"by_stock_code": by_stock_code, "by_name": by_name}
 
 
-def _load_corp_code_index(force_refresh: bool = False) -> dict:
-    if not force_refresh and _CORP_CODE_CACHE.exists():
-        return json.loads(_CORP_CODE_CACHE.read_text(encoding="utf-8"))
+_index_in_memory: dict | None = None  # 30MB 파일을 호출마다 다시 읽지 않도록 프로세스 안에서 한 번만 읽는다
 
-    index = _download_corp_code_index()
-    _CORP_CODE_CACHE.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
-    return index
+
+def _load_corp_code_index(force_refresh: bool = False) -> dict:
+    global _index_in_memory
+    if not force_refresh and _index_in_memory is not None:
+        return _index_in_memory
+    if not force_refresh and _CORP_CODE_CACHE.exists():
+        _index_in_memory = json.loads(_CORP_CODE_CACHE.read_text(encoding="utf-8"))
+        return _index_in_memory
+
+    _index_in_memory = _download_corp_code_index()
+    _CORP_CODE_CACHE.write_text(json.dumps(_index_in_memory, ensure_ascii=False), encoding="utf-8")
+    return _index_in_memory
+
+
+# DART 공식 이름과 흔히 부르는 이름이 다른 경우 (공식 이름이 영문이거나 줄임말로 부를 때)
+_ALIASES = {"네이버": "NAVER", "현대차": "현대자동차", "기아차": "기아", "엘지전자": "LG전자", "포스코": "POSCO홀딩스"}
 
 
 def _find_entry(name_or_stock_code: str, force_refresh: bool = False) -> dict:
     index = _load_corp_code_index(force_refresh=force_refresh)
+    name_or_stock_code = _ALIASES.get(name_or_stock_code.strip(), name_or_stock_code.strip())
     entry = index["by_stock_code"].get(name_or_stock_code) or index["by_name"].get(name_or_stock_code)
     if entry is None:
         raise KeyError(f"'{name_or_stock_code}'에 해당하는 기업을 찾지 못했습니다.")
@@ -103,9 +116,20 @@ def get_corp_code(name_or_stock_code: str, force_refresh: bool = False) -> str:
     """회사명 또는 종목코드로 DART corp_code를 찾는다.
 
     최초 호출 시 전체 기업 목록(zip, 약 30MB)을 받아 로컬(.dart_corp_code_cache.json)에
-    캐싱하고, 이후 호출은 캐시를 재사용한다.
+    캐싱하고, 이후 호출은 캐시를 재사용한다. 이미 8자리 corp_code를 받으면 그대로 돌려준다.
     """
-    return _find_entry(name_or_stock_code, force_refresh)["corp_code"]
+    value = name_or_stock_code.strip()
+    if len(value) == 8 and value.isdigit():  # 종목코드는 6자리라 8자리 숫자면 corp_code
+        return value
+    return _find_entry(value, force_refresh)["corp_code"]
+
+
+def suggest_listed_names(query: str, n: int = 5) -> list[str]:
+    """상장사 중 이름이 비슷한 후보. 이름이 정확히 일치하지 않을 때(예: '현대차' → '현대자동차') 안내용."""
+    names = [e["corp_name"] for e in _load_corp_code_index()["by_stock_code"].values()]
+    containing = sorted((nm for nm in names if query in nm or nm in query), key=len)
+    similar = difflib.get_close_matches(query, names, n=n, cutoff=0.4)
+    return list(dict.fromkeys(containing + similar))[:n]
 
 
 def get_stock_code(name_or_stock_code: str) -> str:
@@ -116,16 +140,33 @@ def get_stock_code(name_or_stock_code: str) -> str:
     return stock_code
 
 
+_OVERVIEW_TTL_SECONDS = 30 * 24 * 3600  # 회사명·결산월·업종 코드는 거의 안 바뀜
+
+
 def get_company_overview(corp_code: str) -> dict:
-    """기업개황 조회."""
-    data = _get_json(f"{BASE_URL}/company.json", {"crtfc_key": DART_API_KEY, "corp_code": corp_code})
-    return _check_status(data)
+    """기업개황 조회. 재무 도구가 부를 때마다 DART에 다시 묻던 것을 캐시(30일)로 바꿨다."""
+    from . import cache  # dart_client만 쓰는 스크립트가 numpy 등을 불러오지 않도록 필요할 때 import
+
+    key = cache.make_key(corp_code)
+    cached = cache.get("dart_overview", key)
+    if cached is not None:
+        return cached
+    data = _check_status(_get_json(f"{BASE_URL}/company.json", {"crtfc_key": DART_API_KEY, "corp_code": corp_code}))
+    cache.put("dart_overview", key, data, _OVERVIEW_TTL_SECONDS)
+    return data
 
 
 def _parse_amount(raw: str | None) -> int | None:
+    """금액 문자열("1,234" 또는 음수 "-1,234")을 정수로. 값이 없으면 None.
+
+    일부 회사(보험사 등)는 빈 금액을 "-"로 보내서, 예전 코드는 int("-")에서 수집이 멈췄다.
+    """
     if not raw:
         return None
-    return int(raw.replace(",", ""))
+    cleaned = raw.replace(",", "").strip()
+    if cleaned in ("", "-"):
+        return None
+    return int(cleaned)
 
 
 def get_financial_statement(corp_code: str, year: str, report_code: str = "11011") -> list[dict]:

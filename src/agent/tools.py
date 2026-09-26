@@ -5,13 +5,16 @@ Phase 3 baseline도 이 함수들을 그대로 쓴다 — ablation에서 도구 
 "도구를 어떻게 조합하느냐"만 달라야 공정한 비교가 되기 때문.
 """
 
+import re
 import sqlite3
 from datetime import date, timedelta
 from pathlib import Path
 
+from ..data import collect_financials as cf
 from ..data import dart_client as dc
 from ..data import news_client as nc
 from ..data import price_client as pc
+from ..data import universe as uv
 
 DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "financials.db"
 
@@ -19,7 +22,7 @@ DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "financials.d
 _PERIOD_RANK = {"11013": 1, "11012": 2, "11014": 3, "11011": 4}
 _PERIOD_LABEL = {"11013": "1분기보고서", "11012": "반기보고서", "11014": "3분기보고서", "11011": "사업보고서(연간)"}
 _PERIOD_ARG_TO_CODE = {"annual": "11011", "q1": "11013", "h1": "11012", "q3": "11014"}
-# 보고서 기간의 종료월 (전부 1월부터 누적 - 12월 결산 기업 기준, 삼성전자/SK하이닉스 해당)
+# 보고서 기간의 종료월 (1월부터 누적 - 12월 결산 기업 기준. 다른 결산월 회사는 get_financial_data에서 따로 처리)
 _PERIOD_END_MONTH = {"11013": 3, "11012": 6, "11014": 9, "11011": 12}
 
 _DEFAULT_PRICE_WINDOW_DAYS = 30
@@ -56,15 +59,19 @@ def _fetch_financials(
         if not periods:
             return []
         year, reprt_code = max(periods, key=lambda p: (int(p[0]), _PERIOD_RANK[p[1]]))
-        rows = conn.execute(
-            """
-            SELECT account_name, sj_name, thstrm_amount, thstrm_add_amount, frmtrm_amount, frmtrm_add_amount
-            FROM financials
-            WHERE corp_code=? AND bsns_year=? AND reprt_code=? AND fs_div='CFS'
-            LIMIT ?
-            """,
-            (corp_code, year, reprt_code, n_accounts),
-        ).fetchall()
+        # 연결재무제표(CFS)를 우선 쓰고, 자회사가 없어 별도재무제표(OFS)만 공시하는 회사는 OFS로 대체
+        for fs_div in ("CFS", "OFS"):
+            rows = conn.execute(
+                """
+                SELECT account_name, sj_name, thstrm_amount, thstrm_add_amount, frmtrm_amount, frmtrm_add_amount
+                FROM financials
+                WHERE corp_code=? AND bsns_year=? AND reprt_code=? AND fs_div=?
+                LIMIT ?
+                """,
+                (corp_code, year, reprt_code, fs_div, n_accounts),
+            ).fetchall()
+            if rows:
+                break
         return [
             {
                 "account_name": r[0],
@@ -75,11 +82,33 @@ def _fetch_financials(
                 "frmtrm_add_amount": r[5],
                 "bsns_year": year,
                 "reprt_code": reprt_code,
+                "fs_div": fs_div,
             }
             for r in rows
         ]
     finally:
         conn.close()
+
+
+def _ensure_reports(corp_code: str, reprt_code: str | None, year: str | None) -> None:
+    """로컬 DB에 없는 회사·기간이면 DART에서 받아 DB에 저장한다 (한 번 받으면 이후엔 DB에서 바로 읽음).
+
+    처음 보는 회사는 최근 보고서 4개를 받고, 특정 연도·기간을 요청했는데 없으면 그것만 받아본다.
+    DART는 무료지만 호출마다 1~2초 걸려서, 필요한 것만 받는다.
+    """
+    periods = _available_periods(corp_code)
+    if not periods:
+        cf.collect_recent_quarters(corp_code)
+        periods = _available_periods(corp_code)
+    matches = [p for p in periods if (reprt_code is None or p[1] == reprt_code) and (year is None or p[0] == str(year))]
+    if matches or (reprt_code is None and year is None):
+        return
+    years = [str(year)] if year else [str(date.today().year), str(date.today().year - 1)]
+    codes = [reprt_code] if reprt_code else sorted(_PERIOD_RANK, key=_PERIOD_RANK.get, reverse=True)
+    for y in years:
+        for c in codes:
+            if (y, c) not in periods and cf.fetch_report(corp_code, y, c):
+                return
 
 
 def _won(v: int | None) -> str:
@@ -113,21 +142,37 @@ def get_financial_data(company: str, period: str = "latest", year: str | int | N
     "2025년 1~9월"을 물었을 때 에이전트가 latest(2026 반기)만 보고 "자료 없음"으로 포기했다.
     """
     reprt_code = _PERIOD_ARG_TO_CODE.get(period.lower())  # "latest" 등 매칭 안 되면 None -> 최근 보고서
+    year = str(year) if year else None
 
-    corp_code = dc.get_corp_code(company)
+    try:
+        corp_code = dc.get_corp_code(company)
+    except KeyError:
+        candidates = ", ".join(dc.suggest_listed_names(company)) or "없음"
+        return f"'{company}'에 해당하는 회사를 DART에서 찾지 못함. 비슷한 상장사 이름: {candidates} (정확한 이름으로 다시 조회)"
     overview = dc.get_company_overview(corp_code)
-    available = f"(조회 가능한 보고서: {_describe_available(_available_periods(corp_code))})"
+    _ensure_reports(corp_code, reprt_code, year)
+    available = f"(조회 가능한 보고서: {_describe_available(_available_periods(corp_code)) or '없음'})"
     facts = _fetch_financials(corp_code, reprt_code, year=year)
 
     if not facts:
+        if reprt_code is None and year is None:
+            return (
+                f"{overview['corp_name']}: DART 재무제표 API에서 최근 보고서를 찾지 못함 "
+                "(상장폐지, 재무제표 미제출, 또는 이 API가 지원하지 않는 공시 형식일 수 있음)"
+            )
         requested = f"{year}년 " if year else ""
-        return f"{overview['corp_name']}: 요청한 {requested}{period} 보고서가 로컬 DB에 없음 {available}"
+        return f"{overview['corp_name']}: 요청한 {requested}{period} 보고서가 DART에 없음 (아직 공시 전일 수 있음) {available}"
 
     year, reprt_code = facts[0]["bsns_year"], facts[0]["reprt_code"]
     period_label = f"{year}년 {_PERIOD_LABEL[reprt_code]}"
-    end_month = _PERIOD_END_MONTH[reprt_code]
-    period_range = f"{year}-01-01 ~ {year}-{end_month:02d}-{_month_end_day(end_month)}"
-    header = f"{overview['corp_name']} ({period_label}, 기간 {period_range}, 연결재무제표 기준) {available}"
+    fs_label = "연결재무제표" if facts[0]["fs_div"] == "CFS" else "별도재무제표(연결 없음)"
+    if overview.get("acc_mt") == "12":
+        end_month = _PERIOD_END_MONTH[reprt_code]
+        period_note = f"기간 {year}-01-01 ~ {year}-{end_month:02d}-{_month_end_day(end_month)}"
+    else:
+        # 12월 결산이 아니면 회계연도가 1월에 시작하지 않아 날짜 범위를 계산하지 않는다
+        period_note = f"{overview.get('acc_mt')}월 결산 회사라 분기는 회계연도 기준"
+    header = f"{overview['corp_name']} ({period_label}, {period_note}, {fs_label} 기준) {available}"
     return header + "\n" + "\n".join(_describe_row(f) for f in facts)
 
 
@@ -162,7 +207,11 @@ def get_stock_price(company: str, start: str | None = None, end: str | None = No
     """
     end = end or date.today().isoformat()
     start = start or (date.fromisoformat(end) - timedelta(days=_DEFAULT_PRICE_WINDOW_DAYS)).isoformat()
-    ticker = dc.get_stock_code(company)
+    try:
+        ticker = dc.get_stock_code(company)
+    except KeyError as e:
+        candidates = ", ".join(dc.suggest_listed_names(company)) or "없음"
+        return f"{e.args[0]} 비슷한 상장사 이름: {candidates} (정확한 이름으로 다시 조회)"
     rows = pc.get_ohlcv(ticker, start, end)
     if not rows:
         return f"{company}({ticker}): {start} ~ {end} 기간의 시세 데이터가 없습니다 (휴장 기간이거나 날짜 범위 오류)."
@@ -195,6 +244,144 @@ def get_stock_price(company: str, start: str | None = None, end: str | None = No
     return "\n".join(lines)
 
 
+# 업종 비교 지표: (분자 계정, 분모 계정, 종류). 손익 항목은 "연초~해당 분기 누적" 기준 (1분기·연간은 당기 값이 곧 누적)
+_PEER_METRICS = {
+    "영업이익률": ("영업이익", "매출액", "ratio"),
+    "순이익률": ("당기순이익(손실)", "매출액", "ratio"),
+    "부채비율": ("부채총계", "자본총계", "ratio"),
+    "매출액 증가율": ("매출액", None, "growth"),
+    "영업이익 증가율": ("영업이익", None, "growth"),
+    "매출액": ("매출액", None, "amount"),
+    "영업이익": ("영업이익", None, "amount"),
+}
+
+
+def _cumulative(row: dict, prior: bool = False) -> int | None:
+    if prior:
+        return row["frmtrm_add_amount"] if row["frmtrm_add_amount"] is not None else row["frmtrm_amount"]
+    return row["thstrm_add_amount"] if row["thstrm_add_amount"] is not None else row["thstrm_amount"]
+
+
+def _peer_metric(corp_code: str, metric: str) -> tuple[float | None, str]:
+    """(지표 값, 보고서 라벨). 계정이 없으면(금융사의 매출액 등) 값은 None."""
+    num_name, den_name, kind = _PEER_METRICS[metric]
+    facts = _fetch_financials(corp_code, None)
+    if not facts:
+        return None, "재무 데이터 없음"
+    rows = {f["account_name"]: f for f in facts}
+    label = f"{facts[0]['bsns_year']}년 {_PERIOD_LABEL[facts[0]['reprt_code']]}"
+    num = rows.get(num_name)
+    if num is None:
+        return None, label
+    if kind == "amount":
+        return _cumulative(num), label
+    if kind == "growth":
+        cur, prev = _cumulative(num), _cumulative(num, prior=True)
+        return ((cur / prev - 1) * 100 if cur is not None and prev else None), label
+    den = rows.get(den_name)
+    a, b = _cumulative(num), (_cumulative(den) if den else None)
+    return ((a / b * 100) if a is not None and b else None), label
+
+
+def _has_revenue(corp_code: str) -> bool:
+    return any(f["account_name"] == "매출액" for f in _fetch_financials(corp_code, None))
+
+
+_GENERIC_WORDS = {"반도체", "업체", "업종", "회사", "기업", "관련", "종목", "중"}
+
+
+def _match_segments(target: str) -> list[str]:
+    """업종 표현을 반도체 세부 업종에 맞춘다: "반도체 소재" → 소재, "장비주" → 전공정·후공정 장비.
+
+    업종 이름을 통째로 말했으면(예: "전공정 장비") 그 업종만 쓴다 — 단어 단위로만 보면 "장비"가 후공정까지 잡힌다.
+    """
+    exact = [s for s in uv.SEMICONDUCTOR_SEGMENTS if s in target]
+    if exact:
+        return exact
+    words = {w[:-1] if w.endswith("주") and len(w) > 2 else w for w in re.findall(r"[가-힣A-Za-z]+", target)}
+    words -= _GENERIC_WORDS
+    return [s for s in uv.SEMICONDUCTOR_SEGMENTS if words & set(re.findall(r"[가-힣A-Za-z]+", s))]
+
+
+def _resolve_peer_group(target: str) -> tuple[str, list[dict], str | None]:
+    """(그룹 설명, 그룹 회사 목록, 기준 회사 corp_code). 업종명이면 그 업종, 회사명이면 그 회사가 속한 업종."""
+    universe = uv.load_universe()
+    # "반도체 소재", "장비주"처럼 업종 이름이 들어간 표현도 받는다 (예전엔 "소재"와 정확히 같아야만 인식해서
+    # 에이전트가 "반도체 소재"로 부르면 업종을 못 찾았다). 여러 업종에 걸치면(예: "장비") 합쳐서 비교.
+    segments = _match_segments(target)
+    if segments:
+        members = [c for c in universe if c.get("segment") in segments]
+        return f"{uv.VALUE_CHAIN_LABEL} · {', '.join(segments)}", members, None
+    for label in (uv.VALUE_CHAIN_LABEL, uv.KOSPI_TOP_LABEL):
+        if target in label or label in target:
+            return label, [c for c in universe if label in c["groups"]], None
+
+    corp_code = dc.get_corp_code(target)  # 못 찾으면 KeyError → 호출부에서 후보 이름 안내
+    me = next((c for c in universe if c["corp_code"] == corp_code), None)
+    if me and me.get("segment"):
+        return f"{uv.VALUE_CHAIN_LABEL} · {me['segment']}", [c for c in universe if c.get("segment") == me["segment"]], corp_code
+    overview = dc.get_company_overview(corp_code)
+    induty = me["induty_code"] if me else overview.get("induty_code", "")
+    if me is None:  # 종목군 밖 회사도 비교에 포함 (필요하면 DART에서 받아옴)
+        _ensure_reports(corp_code, None, None)
+    same = [c for c in universe if c["induty_code"] == induty]
+    if len(same) < 3:  # 같은 세부 업종 코드가 너무 적으면 한 단계 넓은 업종(앞 2자리)으로
+        same = [c for c in universe if c["induty_code"][:2] == induty[:2]]
+    # 금융지주(KB금융)와 일반 지주회사(SK)는 DART 업종 코드가 같다(64992). 금융사는 매출액 계정이 없으므로
+    # 매출액 계정 유무가 같은 회사끼리만 묶어, 은행과 지주회사가 한 그룹에 섞이지 않게 한다.
+    target_has_revenue = _has_revenue(corp_code)
+    same = [c for c in same if _has_revenue(c["corp_code"]) == target_has_revenue]
+    if me is None:
+        same = [{"name": overview["corp_name"], "corp_code": corp_code}] + same
+    return f"DART 업종코드 {induty[:2]}xx 계열 (핵심 종목군 기준)", same, corp_code
+
+
+def compare_peers(target: str, metric: str = "영업이익률") -> str:
+    """Peer Tool: 같은 업종 회사들을 재무 지표로 순위를 매긴다 (미리 수집한 핵심 종목군 기준).
+
+    "장비주 중 영업이익률 1위", "SK하이닉스는 같은 업종 대비 부채비율이 높은 편이야?" 같은 질문용.
+    target: 회사명(그 회사의 업종과 비교) 또는 업종명(메모리, 전공정 장비, 반도체 밸류체인, 코스피 시가총액 상위 등).
+    """
+    if metric not in _PEER_METRICS:
+        return f"지원하지 않는 지표: {metric} (가능: {', '.join(_PEER_METRICS)})"
+    try:
+        group, members, target_code = _resolve_peer_group(target)
+    except KeyError:
+        candidates = ", ".join(dc.suggest_listed_names(target)) or "없음"
+        groups = ", ".join([*uv.SEMICONDUCTOR_SEGMENTS, uv.VALUE_CHAIN_LABEL, uv.KOSPI_TOP_LABEL])
+        return (
+            f"'{target}'을(를) 업종명이나 회사명으로 찾지 못함. 사용 가능한 업종·그룹: {groups}. "
+            f"비슷한 상장사 이름: {candidates}"
+        )
+
+    results = []
+    for c in members:
+        value, label = _peer_metric(c["corp_code"], metric)
+        results.append((c, value, label))
+    ranked = sorted((r for r in results if r[1] is not None), key=lambda r: r[1], reverse=True)
+    missing = [r for r in results if r[1] is None]
+
+    unit = "원" if _PEER_METRICS[metric][2] == "amount" else "%"
+    lines = [
+        f"비교 그룹: {group} ({len(members)}개사, 종목군 스냅샷 {uv.snapshot_date()} 기준)",
+        f"지표: {metric} (각 회사의 가장 최근 보고서, 손익은 연초~해당 분기 누적 기준, 높은 순)",
+    ]
+    for i, (c, value, label) in enumerate(ranked, 1):
+        mark = " ★질문 대상" if c["corp_code"] == target_code else ""
+        shown = f"{value:,.0f}{unit}" if unit == "원" else f"{value:.2f}{unit}"
+        lines.append(f"{i}. {c['name']}: {shown} ({label}){mark}")
+    for c, _, label in missing:
+        lines.append(f"- {c['name']}: 계산 불가 ({label}; 금융사처럼 해당 계정이 없는 회사)")
+    # 이익률이 100%를 넘으면 매출보다 이익이 큰 것 — 지분법 이익이 큰 지주회사 등. 부채비율은 은행이면
+    # 1,000%대가 정상이라 이 주의 문구를 붙이지 않는다.
+    if metric in ("영업이익률", "순이익률") and any(abs(r[1]) > 100 for r in ranked):
+        lines.append("※ 이익률이 100%를 넘는 회사는 지주회사처럼 매출 구조가 달라 단순 비교에 주의")
+    periods = {r[2] for r in ranked}
+    if len(periods) > 1:
+        lines.append(f"※ 회사마다 최근 보고서 기간이 다름({', '.join(sorted(periods))}) — 직접 비교에 주의")
+    return "\n".join(lines)
+
+
 TOOL_SCHEMAS = [
     {
         "type": "function",
@@ -202,7 +389,8 @@ TOOL_SCHEMAS = [
             "name": "get_financial_data",
             "description": (
                 "기업의 DART 공시 재무 데이터(매출액/영업이익/자산 등)를 조회한다. 전년 동기(손익) 또는 "
-                "전기말(재무상태) 비교값도 함께 준다. 현재 삼성전자, SK하이닉스만 지원."
+                "전기말(재무상태) 비교값도 함께 준다. DART에 공시하는 모든 회사를 지원 (처음 조회하는 회사는 "
+                "DART에서 받아오느라 몇 초 걸림). 회사를 못 찾으면 비슷한 이름 후보를 알려주니 그 이름으로 다시 조회."
             ),
             "parameters": {
                 "type": "object",
@@ -264,8 +452,31 @@ TOOL_SCHEMAS = [
     },
 ]
 
+TOOL_SCHEMAS.append(
+    {
+        "type": "function",
+        "function": {
+            "name": "compare_peers",
+            "description": (
+                "같은 업종 회사들을 재무 지표로 순위를 매긴다. '업종 1위', '경쟁사 대비', '같은 업종에서 높은 편인지' 같은 "
+                "비교 질문에 사용. 회사명을 주면 그 회사가 속한 업종과, 업종명을 주면 그 업종 전체와 비교한다. "
+                "반도체 세부 업종: " + ", ".join(uv.SEMICONDUCTOR_SEGMENTS) + f". 그룹: {uv.VALUE_CHAIN_LABEL}, {uv.KOSPI_TOP_LABEL}."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string", "description": "회사명 또는 업종명 (예: 한미반도체, 전공정 장비)"},
+                    "metric": {"type": "string", "enum": list(_PEER_METRICS), "description": "비교할 지표"},
+                },
+                "required": ["target", "metric"],
+            },
+        },
+    }
+)
+
 TOOL_FUNCTIONS = {
     "get_financial_data": get_financial_data,
     "search_news": search_news,
     "get_stock_price": get_stock_price,
+    "compare_peers": compare_peers,
 }

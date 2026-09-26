@@ -9,7 +9,8 @@ split:
 - "heldout" (HELDOUT_QUESTIONS): 2026-09-24 결과를 보기 전에 확정한 질문. 이 질문들의 결과를 보고
   프롬프트나 채점 기준을 고치면 held-out의 의미가 사라지므로 고치지 말 것 (고쳤다면 새 held-out을 만들 것).
   → 실제로 h5를 보고 재무 도구 강제와 증가율 채점을 고쳐서 일부 오염됨.
-- "heldout_v2" (HELDOUT_V2_QUESTIONS): v1이 오염된 뒤 새로 만든 셋. 현재의 주 지표.
+- "heldout_v2" (HELDOUT_V2_QUESTIONS): v1이 오염된 뒤 새로 만든 셋. 이후 연도 지정 결함을 v2에서 발견해 고침.
+- "heldout_v3" (HELDOUT_V3_QUESTIONS): 지원 종목 확장·업종 비교·답변 모델 분리 이후 만든 셋. 새 기능을 직접 묻는다.
 """
 
 TUNING_QUESTIONS = [
@@ -351,11 +352,102 @@ HELDOUT_V2_QUESTIONS = [
     },
 ]
 
+
+# held-out v3. 2026-09-26, 지원 종목 확장(요청 시 DART 수집, 별칭, 핵심 종목군 50개사, 업종 비교 도구)과
+# 최종 답변 모델 분리(mini) 이후, 결과를 보기 전에 확정. 새 기능을 직접 묻는 질문으로 구성:
+# DB에 없던 회사(크래프톤), 별칭(네이버→NAVER), 업종 1위, 경쟁사 대비 위치, 새 회사의 과거 연도, 업종 비교+뉴스 멀티홉.
+# 규칙은 같다: 이 결과를 보고 에이전트 프롬프트를 고치지 말 것 (버그 수정은 예외).
+HELDOUT_V3_QUESTIONS = [
+    {
+        "id": "v3_1_on_demand_company",
+        # 크래프톤은 이 문항을 만들 때 로컬 DB에 없었음 → 도구가 DART에서 즉석으로 받아와야 풀 수 있다
+        "question": "크래프톤 2026년 상반기 누적 영업이익은 얼마야?",
+        "rubric": "2026년 상반기(1~6월) 누적 영업이익을 구체적 금액으로 제시해야 한다. 분기 단독 금액 등 다른 값을 결론으로 제시하거나, 데이터가 없다며 답하지 못하면 fail.",
+        "company": "크래프톤",
+        "expected_sources": {"dart"},
+        "numeric_target": {
+            "company": "크래프톤",
+            "bsns_year": "2026",
+            "reprt_code": "11012",
+            "account_name": "영업이익",
+            "amount_field": "thstrm_add_amount",
+        },
+    },
+    {
+        "id": "v3_2_alias_company",
+        "question": "네이버 2026년 상반기 누적 매출액은 얼마야?",
+        "rubric": "NAVER의 2026년 상반기(1~6월) 누적 매출액을 구체적 금액으로 제시해야 한다. 회사를 찾지 못했다며 답하지 못하거나 다른 값을 제시하면 fail.",
+        "company": "네이버",
+        "expected_sources": {"dart"},
+        "numeric_target": {
+            "company": "NAVER",
+            "bsns_year": "2026",
+            "reprt_code": "11012",
+            "account_name": "매출액",
+            "amount_field": "thstrm_add_amount",
+        },
+    },
+    {
+        "id": "v3_3_peer_top",
+        "question": "반도체 소재 업체들 중 2026년 상반기 누적 영업이익률이 가장 높은 곳은 어디고 몇 %야?",
+        "rubric": "반도체 소재 업종에서 영업이익률 1위 회사와 그 수치를 제시해야 한다. 1위 회사를 틀리게 말하거나 수치가 없으면 fail.",
+        "company": "솔브레인",  # 고정 파이프라인이 쓸 대표 회사 (소재 업종)
+        "expected_sources": {"dart"},
+        "numeric_target": {"kind": "peer_top", "group": "소재", "metric": "영업이익률"},
+    },
+    {
+        "id": "v3_4_peer_position",
+        "question": "현대자동차의 2026년 상반기 누적 매출액 증가율은 같은 업종 경쟁사들과 비교하면 어느 수준이야?",
+        "rubric": "현대자동차의 상반기 누적 매출액 전년 동기 대비 증가율을 제시하고, 같은 업종 경쟁사(예: 기아, 현대모비스)의 증가율과 비교해 상대적 위치를 올바르게 결론 내려야 한다. 경쟁사 수치 없이 결론만 내리거나 위치를 틀리게 말하면 fail.",
+        "company": "현대자동차",
+        "expected_sources": {"dart"},
+        "numeric_target": {
+            "kind": "growth",
+            "company": "현대자동차",
+            "bsns_year": "2026",
+            "reprt_code": "11012",
+            "account_name": "매출액",
+        },
+    },
+    {
+        "id": "v3_5_new_company_past_year",
+        "question": "LG전자 2025년 연간 영업이익은 얼마였고, 전년보다 늘었어 줄었어?",
+        "rubric": "LG전자의 2025년 연간 영업이익을 구체적 금액으로 제시하고, 전년(2024년) 대비 증감 방향을 수치와 함께 올바르게 말해야 한다. 다른 기간 값을 제시하거나 방향을 틀리면 fail.",
+        "company": "LG전자",
+        "expected_sources": {"dart"},
+        "numeric_target": {
+            "company": "LG전자",
+            "bsns_year": "2025",
+            "reprt_code": "11011",
+            "account_name": "영업이익",
+            "amount_field": "thstrm_amount",
+        },
+    },
+    {
+        "id": "v3_6_multihop_peer_news",
+        "question": "한미반도체 영업이익률이 후공정 장비 경쟁사보다 높은 이유가 뭐야? 수치와 뉴스 근거로 설명해줘",
+        "rubric": "① 한미반도체의 영업이익률 수치 ② 후공정 장비 경쟁사(예: 테크윙)의 영업이익률과의 비교 ③ 그 차이의 원인을 조회 자료의 구체적 사실로 설명해야 한다. 원인 근거를 찾지 못한 부분은 솔직히 밝히면 되며, 근거 없는 원인을 사실처럼 단정하면 fail. ①②가 빠져도 fail.",
+        "company": "한미반도체",
+        "expected_sources": {"dart", "news"},
+        "numeric_target": {
+            "kind": "ratio",
+            "company": "한미반도체",
+            "bsns_year": "2026",
+            "reprt_code": "11012",
+            "numerator_account": "영업이익",
+            "denominator_account": "매출액",
+            "amount_field": "thstrm_add_amount",
+        },
+    },
+]
+
 for _q in TUNING_QUESTIONS:
     _q["split"] = "tuning"
 for _q in HELDOUT_QUESTIONS:
     _q["split"] = "heldout"
 for _q in HELDOUT_V2_QUESTIONS:
     _q["split"] = "heldout_v2"
+for _q in HELDOUT_V3_QUESTIONS:
+    _q["split"] = "heldout_v3"
 
-GOLD_QUESTIONS = TUNING_QUESTIONS + HELDOUT_QUESTIONS + HELDOUT_V2_QUESTIONS
+GOLD_QUESTIONS = TUNING_QUESTIONS + HELDOUT_QUESTIONS + HELDOUT_V2_QUESTIONS + HELDOUT_V3_QUESTIONS
