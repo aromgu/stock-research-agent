@@ -18,13 +18,8 @@ from pathlib import Path
 from ..agent import tools
 from ..data import cache, news_client
 
-_USAGE_FILE = Path(news_client.__file__).parent / ".news_api_usage.json"
-
-
 def _naver_count() -> int:
-    if not _USAGE_FILE.exists():
-        return 0
-    return sum(json.loads(_USAGE_FILE.read_text(encoding="utf-8")).values())
+    return news_client.today_usage()
 
 
 def _load_calls(runs_path: Path, limit: int) -> list[tuple[str, dict]]:

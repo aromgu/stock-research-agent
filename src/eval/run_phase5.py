@@ -40,12 +40,13 @@ LOG_PATH = Path(__file__).resolve().parent.parent.parent / "logs" / "phase5_eval
 SUMMARY_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "phase5_summary_export.md"
 RUNS_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "phase5_runs_export.jsonl"
 
-# compare_peers도 DART 재무 데이터를 쓰는 도구라 인용 출처는 dart로 본다
+# compare_peers도 DART 재무 데이터를 쓰는 도구라 인용 출처는 dart로, 기사 본문 읽기는 news로 본다
 _TOOL_TO_SOURCE = {
     "get_financial_data": "dart",
     "search_news": "news",
     "get_stock_price": "price",
     "compare_peers": "dart",
+    "read_articles": "news",
 }
 
 APPROACHES = ["dart_baseline", "news_baseline", "all_tools_baseline", "agent"]

@@ -10,6 +10,7 @@ import sqlite3
 from datetime import date, timedelta
 from pathlib import Path
 
+from ..data import article_client as ac
 from ..data import collect_financials as cf
 from ..data import dart_client as dc
 from ..data import news_client as nc
@@ -196,7 +197,25 @@ def search_news(query: str, after: str | None = None, before: str | None = None)
                 "못하는 경우가 흔합니다 — 날짜 범위를 좁히거나(더 최근으로), 검색어를 바꿔서 다시 시도해보세요."
             )
         return "관련 뉴스를 찾지 못했습니다."
-    return "\n".join(f"- [{i + 1}] ({a['pub_date']}) {a['title']}: {a['description']}" for i, a in enumerate(articles))
+    ac.remember_links(articles)
+    return "\n".join(
+        f"- [{i + 1}] (id: {ac.article_id(a['link'])}, {a['pub_date']}) {a['title']}: {a['description']}"
+        for i, a in enumerate(articles)
+    )
+
+
+def read_articles(ids: list[str]) -> str:
+    """search_news 결과 중 요약만으로 부족한 기사의 본문(앞부분)을 가져온다. 최대 5개, 동시에 수집."""
+    if isinstance(ids, str):
+        ids = [ids]
+    parts = []
+    for a in ac.read_articles(ids):
+        title = a.get("title", "")
+        if a["text"] is None:
+            parts.append(f"[{a['id']}] {title} — {a['error']}")
+        else:
+            parts.append(f"[{a['id']}] {title}\n{a['text']}")
+    return "\n\n".join(parts)
 
 
 def get_stock_price(company: str, start: str | None = None, end: str | None = None) -> str:
@@ -474,9 +493,34 @@ TOOL_SCHEMAS.append(
     }
 )
 
+TOOL_SCHEMAS.append(
+    {
+        "type": "function",
+        "function": {
+            "name": "read_articles",
+            "description": (
+                "search_news 결과의 기사 본문(앞부분)을 읽는다. 요약만으로는 원인·수치·배경이 불분명할 때만 쓰고, "
+                "요약으로 충분하면 부르지 마 (느리고 비용이 든다). 관련성이 가장 높은 기사 1~3개 정도만 고를 것."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "search_news 결과에 나온 기사 id 목록 (최대 5개)",
+                    },
+                },
+                "required": ["ids"],
+            },
+        },
+    }
+)
+
 TOOL_FUNCTIONS = {
     "get_financial_data": get_financial_data,
     "search_news": search_news,
     "get_stock_price": get_stock_price,
     "compare_peers": compare_peers,
+    "read_articles": read_articles,
 }

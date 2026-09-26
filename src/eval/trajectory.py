@@ -7,7 +7,7 @@
 import json
 
 # 도구가 "결과 없음"을 알릴 때 쓰는 문구 (tools.py의 반환 문자열 기준)
-_EMPTY_MARKERS = ("찾지 못했습니다", "시세 데이터가 없습니다", "로컬 DB에 없음", "조회 불가:")
+_EMPTY_MARKERS = ("찾지 못했습니다", "시세 데이터가 없습니다", "로컬 DB에 없음", "조회 불가:", "본문을 가져오지 못함")
 
 
 def _is_empty(result: str) -> bool:

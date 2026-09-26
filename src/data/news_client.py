@@ -46,31 +46,57 @@ BASE_URL = "https://naverapihub.apigw.ntruss.com/search/v1/news"
 # NAVER API HUB 무료 한도(일 25,000건)에 맞춤. 초과 시 NAVER가 과금 없이 차단하므로 비용 위험은 없다.
 # (예전엔 300으로 두었으나 평가 실행 1회에 수백 건이 필요해져 공식 한도로 올림, 2026-09-24)
 DAILY_CALL_CAP = 25000
-_USAGE_FILE = Path(__file__).parent / ".news_api_usage.json"
+_USAGE_FILE = Path(__file__).parent / ".news_api_usage.json"  # 예전 카운터 (오늘 기록이 있으면 새 카운터로 옮김)
+# 도구를 병렬 실행하면서 여러 스레드·프로세스(배치 수집기)가 JSON 파일을 동시에 읽고 쓰다가, 반쯤 쓰인 파일을
+# 읽어 JSONDecodeError로 검색이 실패하고 호출 수도 빠졌다 → SQLite 트랜잭션으로 원자적으로 센다.
+# 캐시(cache.db)와 따로 두는 이유: 벤치마크가 캐시를 임시 파일로 바꿔도 실제 호출 수는 여기에 쌓여야 함.
+_USAGE_DB = Path(__file__).parent / ".news_api_usage.db"
 
 
 class DailyCapExceeded(RuntimeError):
     """자체 설정한 일일 호출 한도를 넘었을 때 발생 (네이버 무료 한도 도달 훨씬 전에 멈춤)."""
 
 
-def _load_usage() -> dict:
-    if _USAGE_FILE.exists():
-        return json.loads(_USAGE_FILE.read_text(encoding="utf-8"))
-    return {}
+def _usage_connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(_USAGE_DB, timeout=30, isolation_level=None)  # 트랜잭션을 직접 연다
+    conn.execute("CREATE TABLE IF NOT EXISTS naver_usage (day TEXT PRIMARY KEY, count INTEGER)")
+    return conn
+
+
+def _legacy_count(today: str) -> int:
+    try:
+        return json.loads(_USAGE_FILE.read_text(encoding="utf-8")).get(today, 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def today_usage() -> int:
+    conn = _usage_connect()
+    try:
+        row = conn.execute("SELECT count FROM naver_usage WHERE day=?", (date.today().isoformat(),)).fetchone()
+    finally:
+        conn.close()
+    return row[0] if row else 0
 
 
 def _bump_and_check_usage() -> int:
     today = date.today().isoformat()
-    usage = _load_usage()
-    count = usage.get(today, 0) + 1
-    if count > DAILY_CALL_CAP:
-        raise DailyCapExceeded(
-            f"오늘({today}) 자체 설정한 일일 호출 한도({DAILY_CALL_CAP}건)를 초과했습니다. "
-            "네이버 무료 한도(25,000건)와는 별개로, 버그로 인한 과호출을 막기 위한 자체 안전장치입니다. "
-            "정말 더 호출해야 한다면 DAILY_CALL_CAP을 신중히 올리세요."
-        )
-    usage = {today: count}  # 날짜가 바뀌면 이전 기록은 버림 (단순화)
-    _USAGE_FILE.write_text(json.dumps(usage), encoding="utf-8")
+    conn = _usage_connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")  # 읽고-더하고-쓰는 동안 다른 스레드·프로세스가 끼어들지 못하게
+        conn.execute("INSERT OR IGNORE INTO naver_usage VALUES (?, ?)", (today, _legacy_count(today)))
+        (count,) = conn.execute("SELECT count + 1 FROM naver_usage WHERE day=?", (today,)).fetchone()
+        if count > DAILY_CALL_CAP:
+            conn.execute("ROLLBACK")
+            raise DailyCapExceeded(
+                f"오늘({today}) 자체 설정한 일일 호출 한도({DAILY_CALL_CAP}건)를 초과했습니다. "
+                "네이버 무료 한도(25,000건)와는 별개로, 버그로 인한 과호출을 막기 위한 자체 안전장치입니다. "
+                "정말 더 호출해야 한다면 DAILY_CALL_CAP을 신중히 올리세요."
+            )
+        conn.execute("UPDATE naver_usage SET count=? WHERE day=?", (count, today))
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
     return count
 
 

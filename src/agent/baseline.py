@@ -7,6 +7,7 @@ Phase 4의 멀티홉 에이전트(플래너+동적 도구선택) 전 단계로, 
 baseline과 에이전트가 다른 건 "어떤 도구를 언제 쓰는지"뿐이어야 하기 때문.
 """
 
+import re
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -113,7 +114,7 @@ def answer_with_news(question: str) -> dict:
 
 
 def answer_with_all_tools(question: str, company: str) -> dict:
-    """모든 도구(재무·뉴스·주가·업종 비교)를 질문 내용과 무관하게 항상 한 번씩 불러 답한다. {"answer", "context"} 반환.
+    """모든 도구(재무·뉴스·기사 본문·주가·업종 비교)를 질문 내용과 무관하게 항상 한 번씩 불러 답한다. {"answer", "context"} 반환.
 
     도구 인자는 고정: 재무는 최신 보고서, 주가는 최근 30일, 업종 비교는 대상 회사의 영업이익률.
 
@@ -132,12 +133,16 @@ def answer_with_all_tools(question: str, company: str) -> dict:
     except Exception as e:  # noqa: BLE001 — 비상장사 등으로 주가 조회가 아예 불가능한 경우
         price_context = f"조회 불가: {e}"
     peer_context = tools.compare_peers(company, "영업이익률")
+    # 에이전트는 필요할 때만 기사 본문을 읽지만, 이 비교군은 "항상 모든 도구"이므로 상위 3개 본문을 늘 읽는다
+    article_ids = re.findall(r"id: ([0-9a-f]{8})", news_context)[:3]
+    article_context = tools.read_articles(article_ids) if article_ids else "읽을 기사 없음"
 
     context = (
         f"[DART 재무 데이터]\n{dart_context}\n\n"
         f"[관련 뉴스 (검색어: {news_query})]\n{news_context}\n\n"
         f"[주가 데이터 (최근 30일)]\n{price_context}\n\n"
-        f"[같은 업종 비교 (영업이익률)]\n{peer_context}"
+        f"[같은 업종 비교 (영업이익률)]\n{peer_context}\n\n"
+        f"[관련 뉴스 상위 기사 본문]\n{article_context}"
     )
     prompt = (
         f"다음은 여러 출처의 데이터다:\n{context}\n\n"
