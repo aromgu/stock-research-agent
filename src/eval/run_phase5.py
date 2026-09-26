@@ -35,6 +35,7 @@ from .graders import (
     precision_recall_f1,
 )
 from .trajectory import analyze_trajectory
+from . import stats
 
 LOG_PATH = Path(__file__).resolve().parent.parent.parent / "logs" / "phase5_eval.md"
 SUMMARY_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "phase5_summary_export.md"
@@ -60,8 +61,15 @@ APPROACH_LABEL = {
 PAIRWISE_PAIR = ("agent", "all_tools_baseline")
 
 # 요약 표에 보여줄 순서 (주 지표가 먼저)
-_SPLITS = (("heldout_v3", "held-out v3"), ("heldout_v2", "held-out v2"), ("heldout", "held-out v1"), ("tuning", "튜닝 셋"))
+_SPLITS = (
+    ("heldout_v4", "held-out v4"),
+    ("heldout_v3", "held-out v3"),
+    ("heldout_v2", "held-out v2"),
+    ("heldout", "held-out v1"),
+    ("tuning", "튜닝 셋"),
+)
 _SPLIT_NOTE = {
+    "heldout_v4": "코드가 규칙과 고정 시드로 생성, 결과를 보기 전에 파일 해시 고정 — 현재 주 지표",
     "heldout_v3": "종목 확장·업종 비교 이후 결과를 보기 전에 확정, 새 기능을 묻는 현재 주 지표",
     "heldout_v2": "결과를 보기 전에 확정했으나 이후 연도 지정 결함을 v2에서 발견해 고침",
     "heldout": "h5를 보고 에이전트·채점을 고쳐 일부 오염됨",
@@ -161,47 +169,55 @@ def _log_pairwise(gq: dict, result: dict) -> None:
         )
 
 
-def _load_runs() -> dict[tuple[str, str], dict]:
+def _load_runs() -> dict[tuple[str, str, int], dict]:
+    """(질문, 방식, 반복 번호) → 실행 기록. 반복 번호가 없는 예전 기록은 0번으로 본다."""
     if not RUNS_PATH.exists():
         return {}
     with open(RUNS_PATH, encoding="utf-8") as f:
         records = [json.loads(line) for line in f if line.strip()]
-    return {(r["question_id"], r["approach"]): r for r in records}
+    return {(r["question_id"], r["approach"], r.get("rep", 0)): r for r in records}
 
 
-def _save_runs(runs: dict[tuple[str, str], dict]) -> None:
+def _save_runs(runs: dict[tuple[str, str, int], dict]) -> None:
     RUNS_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(RUNS_PATH, "w", encoding="utf-8") as f:
         for record in runs.values():
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-def _generate(questions: list[dict], approaches: list[str], resume: bool) -> None:
-    """답변 생성 단계 (API 비용 대부분). 선택한 (질문, 방식)만 새로 생성해 저장된 답변에서 교체한다.
+def _generate(questions: list[dict], approaches: list[str], resume: bool, repeat: int) -> None:
+    """답변 생성 단계 (API 비용 대부분). 선택한 (질문, 방식, 반복 번호)만 새로 생성해 저장된 답변에서 교체한다.
 
-    한 건 끝날 때마다 바로 저장해서 중간에 끊겨도 --resume으로 이어갈 수 있다.
+    한 건 끝날 때마다 바로 저장해서 중간에 끊겨도 --resume으로 이어갈 수 있다. 같은 질문도 실행마다 에이전트
+    행동이 달라서, --repeat N이면 N번씩 생성해 평균과 흔들림을 본다.
     """
     runs = _load_runs()
-    for gq in questions:
-        for approach in approaches:
-            if resume and (gq["id"], approach) in runs:
-                continue
-            run = _RUNNERS[approach](gq)
-            runs[(gq["id"], approach)] = {
-                "question_id": gq["id"],
-                "approach": approach,
-                "answer": run["answer"],
-                "context": run["context"],
-                "predicted_sources": sorted(run["predicted_sources"]),
-                "elapsed": run["elapsed"],
-                "transcript": run["transcript"],
-                # 에이전트만 있는 필드 (검증 단계 전 초안, 재무 도구 강제 여부)
-                "draft_answer": run.get("draft_answer"),
-                "financial_guard_triggered": run.get("financial_guard_triggered"),
-                "usage": run.get("usage", {}),  # 모델별 토큰 사용량 (비용 비교용)
-            }
-            _save_runs(runs)
-            print(f"[generated] {gq['id']} / {approach} ({run['elapsed']:.1f}s)")
+    for rep in range(repeat):
+        for gq in questions:
+            for approach in approaches:
+                if resume and (gq["id"], approach, rep) in runs:
+                    continue
+                run = _RUNNERS[approach](gq)
+                runs[(gq["id"], approach, rep)] = _record(gq, approach, rep, run)
+                _save_runs(runs)
+                print(f"[generated] rep{rep} {gq['id']} / {approach} ({run['elapsed']:.1f}s)")
+
+
+def _record(gq: dict, approach: str, rep: int, run: dict) -> dict:
+    return {
+        "question_id": gq["id"],
+        "approach": approach,
+        "rep": rep,
+        "answer": run["answer"],
+        "context": run["context"],
+        "predicted_sources": sorted(run["predicted_sources"]),
+        "elapsed": run["elapsed"],
+        "transcript": run["transcript"],
+        # 에이전트만 있는 필드 (검증 단계 전 초안, 재무 도구 강제 여부)
+        "draft_answer": run.get("draft_answer"),
+        "financial_guard_triggered": run.get("financial_guard_triggered"),
+        "usage": run.get("usage", {}),  # 모델별 토큰 사용량 (비용 비교용)
+    }
 
 
 def main() -> None:
@@ -210,82 +226,99 @@ def main() -> None:
     mode.add_argument("--resume", action="store_true", help="저장된 답변은 건너뛰고 나머지만 생성")
     mode.add_argument("--regrade", action="store_true", help="생성 없이 저장된 답변으로 채점만")
     parser.add_argument("--questions", help="쉼표로 구분한 질문 id만 실행 (예: q5_multihop_samsung,h1_debt_ratio)")
+    parser.add_argument("--splits", help=f"쉼표로 구분한 셋만 실행 (선택: {','.join(s for s, _ in _SPLITS)})")
     parser.add_argument("--approaches", help=f"쉼표로 구분한 방식만 실행 (선택: {','.join(APPROACHES)})")
+    parser.add_argument("--repeat", type=int, default=1, help="(질문, 방식)마다 몇 번 생성할지 (실행마다 결과가 흔들리는 정도를 보려면 3)")
     parser.add_argument("--skip-judge", action="store_true", help="LLM 심판·쌍대 비교 생략 (OpenAI 호출 없이 흐름 점검)")
     args = parser.parse_args()
 
     questions = GOLD_QUESTIONS
+    if args.splits:
+        wanted_splits = set(args.splits.split(","))
+        if wanted_splits - {s for s, _ in _SPLITS}:
+            parser.error(f"알 수 없는 셋: {sorted(wanted_splits - {s for s, _ in _SPLITS})}")
+        questions = [gq for gq in questions if gq["split"] in wanted_splits]
     if args.questions:
         wanted = set(args.questions.split(","))
-        questions = [gq for gq in GOLD_QUESTIONS if gq["id"] in wanted]
+        questions = [gq for gq in questions if gq["id"] in wanted]
         unknown = wanted - {gq["id"] for gq in questions}
         if unknown:
             parser.error(f"알 수 없는 질문 id: {sorted(unknown)}")
     approaches = args.approaches.split(",") if args.approaches else APPROACHES
     if set(approaches) - set(APPROACHES):
         parser.error(f"알 수 없는 방식: {sorted(set(approaches) - set(APPROACHES))}")
-    partial = questions is not GOLD_QUESTIONS or approaches is not APPROACHES
+    # 셋 단위 실행은 그 셋의 요약을 따로 저장하고, 질문·방식 일부만 돌린 경우는 요약을 쓰지 않는다
+    partial = bool(args.questions) or approaches is not APPROACHES
 
     if not args.regrade:
-        _generate(questions, approaches, resume=args.resume)
+        _generate(questions, approaches, resume=args.resume, repeat=args.repeat)
     runs = _load_runs()
 
-    rows = []  # 한 줄 = (질문, 방식) 하나의 채점 결과. 요약 표는 이걸 split별로 집계
+    rows = []  # 한 줄 = (질문, 방식, 반복) 하나의 채점 결과. 요약 표는 이걸 split별로 집계
     pairwise_rows = []
     for gq in questions:
         reference = describe_reference(gq["numeric_target"])  # 질문당 한 번만 계산 (방식 무관)
-        numeric_checks = {}
-        for approach in approaches:
-            run = runs.get((gq["id"], approach))
-            if run is None:
-                print(f"[skip] {gq['id']} / {approach}: 저장된 답변 없음 (--resume으로 생성 필요)")
-                continue
-            numeric_grade = grade_numeric(run["answer"], gq["numeric_target"])
-            numeric_checks[approach] = describe_numeric_check(numeric_grade)
-            if args.skip_judge:
-                judge = {"pass": None, "reason": "--skip-judge로 생략"}
-            else:
-                judge = judge_answer(
-                    gq["question"], gq["rubric"], run["answer"], reference, numeric_checks[approach], run["context"]
+        reps = sorted({k[2] for k in runs if k[0] == gq["id"] and k[1] in approaches})
+        if not reps:
+            print(f"[skip] {gq['id']}: 저장된 답변 없음 (--resume으로 생성 필요)")
+            continue
+        for rep in reps:
+            numeric_checks = {}
+            for approach in approaches:
+                run = runs.get((gq["id"], approach, rep))
+                if run is None:
+                    print(f"[skip] rep{rep} {gq['id']} / {approach}: 저장된 답변 없음")
+                    continue
+                numeric_grade = grade_numeric(run["answer"], gq["numeric_target"])
+                numeric_checks[approach] = describe_numeric_check(numeric_grade)
+                if args.skip_judge:
+                    judge = {"pass": None, "reason": "--skip-judge로 생략"}
+                else:
+                    judge = judge_answer(
+                        gq["question"], gq["rubric"], run["answer"], reference, numeric_checks[approach], run["context"]
+                    )
+                _log_run(gq, approach, run, numeric_grade, reference, judge)
+                rows.append(
+                    {
+                        "question_id": gq["id"],
+                        "split": gq["split"],
+                        "approach": approach,
+                        "rep": rep,
+                        "predicted_sources": run["predicted_sources"],
+                        "expected_sources": sorted(gq["expected_sources"]),
+                        "numeric_correct": numeric_grade["correct"],
+                        "deferred": is_deferred_answer(run["answer"]),
+                        "judge_pass": judge["pass"],
+                        "elapsed": run["elapsed"],
+                        "usage": run.get("usage", {}),
+                        **analyze_trajectory(run),
+                    }
                 )
-            _log_run(gq, approach, run, numeric_grade, reference, judge)
-            rows.append(
-                {
-                    "question_id": gq["id"],
-                    "split": gq["split"],
-                    "approach": approach,
-                    "predicted_sources": run["predicted_sources"],
-                    "expected_sources": sorted(gq["expected_sources"]),
-                    "numeric_correct": numeric_grade["correct"],
-                    "deferred": is_deferred_answer(run["answer"]),
-                    "judge_pass": judge["pass"],
-                    "elapsed": run["elapsed"],
-                    "usage": run.get("usage", {}),
-                    **analyze_trajectory(run),
-                }
-            )
-            print(f"[graded] {gq['id']} / {approach} judge={judge['pass']}")
+                print(f"[graded] rep{rep} {gq['id']} / {approach} judge={judge['pass']}")
 
-        a, b = PAIRWISE_PAIR
-        if not args.skip_judge and a in numeric_checks and b in numeric_checks:
-            result = pairwise_judge(
-                gq["question"],
-                gq["rubric"],
-                reference,
-                {"name": a, "answer": runs[(gq["id"], a)]["answer"], "numeric_check": numeric_checks[a]},
-                {"name": b, "answer": runs[(gq["id"], b)]["answer"], "numeric_check": numeric_checks[b]},
-            )
-            _log_pairwise(gq, result)
-            pairwise_rows.append({"question_id": gq["id"], "split": gq["split"], **result})
-            print(f"[pairwise] {gq['id']} winner={result['winner']} consistent={result['consistent']}")
+            a, b = PAIRWISE_PAIR
+            if not args.skip_judge and a in numeric_checks and b in numeric_checks:
+                result = pairwise_judge(
+                    gq["question"],
+                    gq["rubric"],
+                    reference,
+                    {"name": a, "answer": runs[(gq["id"], a, rep)]["answer"], "numeric_check": numeric_checks[a]},
+                    {"name": b, "answer": runs[(gq["id"], b, rep)]["answer"], "numeric_check": numeric_checks[b]},
+                )
+                _log_pairwise(gq, result)
+                pairwise_rows.append({"question_id": gq["id"], "split": gq["split"], "rep": rep, **result})
+                print(f"[pairwise] rep{rep} {gq['id']} winner={result['winner']} consistent={result['consistent']}")
 
     print(f"\n상세 로그: {LOG_PATH}")
     if partial:
-        # 일부만 채점한 결과로 전체 요약 표를 덮어쓰면 오해를 부르므로 갱신하지 않는다
+        # 일부만 채점한 결과로 요약 표를 덮어쓰면 오해를 부르므로 갱신하지 않는다
         print("일부 질문/방식만 실행해서 요약 리포트는 갱신하지 않았습니다.")
         return
-    _write_summary(rows, pairwise_rows)
-    print(f"요약 리포트: {SUMMARY_PATH}")
+    path = SUMMARY_PATH
+    if args.splits:
+        path = SUMMARY_PATH.with_name(f"phase5_summary_{'_'.join(sorted(set(args.splits.split(','))))}_export.md")
+    _write_summary(rows, pairwise_rows, path)
+    print(f"요약 리포트: {path}")
 
 
 def _fmt(v: float | None) -> str:
@@ -371,17 +404,59 @@ def _pairwise_table(pairwise_rows: list[dict]) -> list[str]:
     return lines
 
 
-def _write_summary(rows: list[dict], pairwise_rows: list[dict]) -> None:
-    SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    counts = " + ".join(f"{label} {sum(q['split'] == s for q in GOLD_QUESTIONS)}" for s, label in _SPLITS)
+def _repeat_lines(rows: list[dict]) -> list[str]:
+    """반복 실행이 있으면: 반복별 통과 수, 판정이 흔들린 문항, 에이전트 - 비교군 차이의 95% 신뢰구간."""
+    lines = []
+    reps = sorted({r.get("rep", 0) for r in rows})
+    if len(reps) > 1:
+        lines += ["", "| 방식 | 반복별 LLM 심판 통과 | 평균 통과율 | 반복마다 판정이 바뀐 문항 |", "|---|---|---|---|"]
+        for approach in APPROACHES:
+            rs = [r for r in rows if r["approach"] == approach and r["judge_pass"] is not None]
+            if not rs:
+                continue
+            per_rep = []
+            for rep in reps:
+                judged = [r["judge_pass"] for r in rs if r.get("rep", 0) == rep]
+                per_rep.append(f"{sum(judged)}/{len(judged)}")
+            flips, repeated = stats.flip_count(rows, approach)
+            lines.append(
+                f"| {APPROACH_LABEL[approach]} | {' · '.join(per_rep)} | {sum(r['judge_pass'] for r in rs) / len(rs):.0%} "
+                f"| {flips}/{repeated} |"
+            )
+    a, b = PAIRWISE_PAIR
+    rate_a, rate_b = stats.per_question_rate(rows, a), stats.per_question_rate(rows, b)
+    common = sorted(set(rate_a) & set(rate_b))
+    ci = stats.paired_bootstrap_ci([rate_a[q] - rate_b[q] for q in common])
+    if ci:
+        mean, lo, hi = ci
+        verdict = "차이가 있다고 말하기 어려움 (구간이 0을 포함)" if lo <= 0 <= hi else "차이가 통계적으로 뚜렷함"
+        lines += [
+            "",
+            f"LLM 심판 통과율 차이 ({APPROACH_LABEL[a]} − {APPROACH_LABEL[b]}): **{mean * 100:+.1f}%p**, "
+            f"95% 신뢰구간 {lo * 100:+.1f} ~ {hi * 100:+.1f}%p (문항 {len(common)}개 부트스트랩) → {verdict}",
+        ]
+    return lines
+
+
+def _write_summary(rows: list[dict], pairwise_rows: list[dict], path: Path = SUMMARY_PATH) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    present = [(s, label) for s, label in _SPLITS if any(r["split"] == s for r in rows)]
+    counts = " + ".join(f"{label} {len({r['question_id'] for r in rows if r['split'] == s})}" for s, label in present)
+    reps = sorted({r.get("rep", 0) for r in rows})
     a, b = PAIRWISE_PAIR
     split_sections = []
-    for split_name, label in _SPLITS:
-        split_sections += [f"\n## {label} — {_SPLIT_NOTE[split_name]}\n", *_summary_table([r for r in rows if r["split"] == split_name])]
+    for split_name, label in present:
+        split_rows = [r for r in rows if r["split"] == split_name]
+        split_sections += [
+            f"\n## {label} — {_SPLIT_NOTE[split_name]}\n",
+            *_summary_table(split_rows),
+            *_repeat_lines(split_rows),
+        ]
     lines = [
         "# Phase 5 채점 결과 (에이전틱 vs 고정 파이프라인 ablation)\n",
-        f"생성: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} · 질문 {len(GOLD_QUESTIONS)}개 "
-        f"({counts}) x 방식 {len(APPROACHES)}개\n",
+        f"생성: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} · 질문 {len({r['question_id'] for r in rows})}개 "
+        f"({counts}) x 방식 {len({r['approach'] for r in rows})}개 x 반복 {len(reps)}회\n",
+        "표의 통과 수는 반복 실행을 모두 합친 값입니다.\n" if len(reps) > 1 else "",
         *split_sections,
         f"\n## 쌍대 비교 ({APPROACH_LABEL[a]} vs {APPROACH_LABEL[b]}, 순서를 바꿔 두 번 판정하고 엇갈리면 무승부)\n",
         *_pairwise_table(pairwise_rows),
@@ -390,16 +465,16 @@ def _write_summary(rows: list[dict], pairwise_rows: list[dict]) -> None:
         "\n## LLM 사용량 (전체 질문, 질문당 평균)\n",
         *_usage_table(rows),
         "\n## 질문별 상세\n",
-        "| 질문 | 구분 | 방식 | 예측 출처 | 정답 출처 | 숫자 정답 | 심판 | 도구 호출 | 소요(초) |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| 질문 | 구분 | 반복 | 방식 | 예측 출처 | 정답 출처 | 숫자 정답 | 심판 | 도구 호출 | 소요(초) |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         lines.append(
-            f"| {r['question_id']} | {r['split']} | {APPROACH_LABEL[r['approach']]} | {r['predicted_sources']} | "
+            f"| {r['question_id']} | {r['split']} | {r.get('rep', 0)} | {APPROACH_LABEL[r['approach']]} | {r['predicted_sources']} | "
             f"{r['expected_sources']} | {r['numeric_correct']} | {r['judge_pass']} | {r['tool_calls']} "
             f"| {r['elapsed']:.1f} |"
         )
-    with open(SUMMARY_PATH, "w", encoding="utf-8") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 
 

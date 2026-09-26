@@ -39,15 +39,20 @@ def _get_amount(company: str, bsns_year: str, reprt_code: str, account_name: str
     corp_code = dc.get_corp_code(company)
     conn = sqlite3.connect(DB_PATH)
     try:
-        row = conn.execute(
-            f"""
-            SELECT {amount_field} FROM financials
-            WHERE corp_code=? AND bsns_year=? AND reprt_code=? AND account_name=? AND fs_div='CFS'
-            LIMIT 1
-            """,
-            (corp_code, bsns_year, reprt_code, account_name),
-        ).fetchone()
-        return row[0] if row else None
+        # 도구(_fetch_financials)와 같은 규칙: 연결재무제표(CFS)가 없는 회사는 별도재무제표(OFS).
+        # 예전엔 CFS만 봐서 자회사 없는 회사는 정답이 None이 되어 채점에서 조용히 빠졌다.
+        for fs_div in ("CFS", "OFS"):
+            row = conn.execute(
+                f"""
+                SELECT {amount_field} FROM financials
+                WHERE corp_code=? AND bsns_year=? AND reprt_code=? AND account_name=? AND fs_div=?
+                LIMIT 1
+                """,
+                (corp_code, bsns_year, reprt_code, account_name, fs_div),
+            ).fetchone()
+            if row:
+                return row[0]
+        return None
     finally:
         conn.close()
 

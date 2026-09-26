@@ -11,7 +11,13 @@ split:
   → 실제로 h5를 보고 재무 도구 강제와 증가율 채점을 고쳐서 일부 오염됨.
 - "heldout_v2" (HELDOUT_V2_QUESTIONS): v1이 오염된 뒤 새로 만든 셋. 이후 연도 지정 결함을 v2에서 발견해 고침.
 - "heldout_v3" (HELDOUT_V3_QUESTIONS): 지원 종목 확장·업종 비교·답변 모델 분리 이후 만든 셋. 새 기능을 직접 묻는다.
+- "heldout_v4" (HELDOUT_V4_QUESTIONS): 사람이 고르지 않고 make_heldout_v4.py가 규칙과 고정 시드로 만든 45문항.
+  파일 해시를 아래에 고정해 결과를 본 뒤 고치면 로드가 실패한다.
 """
+
+import hashlib
+import json
+from pathlib import Path
 
 TUNING_QUESTIONS = [
     {
@@ -441,6 +447,24 @@ HELDOUT_V3_QUESTIONS = [
     },
 ]
 
+# 결과를 보기 전에 고정한 해시. heldout_v4.json을 바꾸면 여기서 멈춘다 — 바꿔야 한다면 v5를 새로 만들 것.
+HELDOUT_V4_SHA256 = "cc3a9a7cda06e0da24f868fa93aa434ed03b02ddac3622623ab3421115364a6d"
+_V4_PATH = Path(__file__).with_name("heldout_v4.json")
+
+
+def _load_heldout_v4() -> list[dict]:
+    raw = _V4_PATH.read_bytes().replace(b"\r\n", b"\n")  # Windows git이 줄바꿈을 바꿔도 같은 해시가 나오게
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != HELDOUT_V4_SHA256:
+        raise RuntimeError(f"heldout_v4.json이 고정된 뒤 바뀌었습니다 (해시 {digest[:12]}…). held-out을 고치지 말고 새로 만드세요.")
+    questions = json.loads(raw)["questions"]
+    for q in questions:
+        q["expected_sources"] = set(q["expected_sources"])
+    return questions
+
+
+HELDOUT_V4_QUESTIONS = _load_heldout_v4()
+
 for _q in TUNING_QUESTIONS:
     _q["split"] = "tuning"
 for _q in HELDOUT_QUESTIONS:
@@ -449,5 +473,7 @@ for _q in HELDOUT_V2_QUESTIONS:
     _q["split"] = "heldout_v2"
 for _q in HELDOUT_V3_QUESTIONS:
     _q["split"] = "heldout_v3"
+for _q in HELDOUT_V4_QUESTIONS:
+    _q["split"] = "heldout_v4"
 
-GOLD_QUESTIONS = TUNING_QUESTIONS + HELDOUT_QUESTIONS + HELDOUT_V2_QUESTIONS + HELDOUT_V3_QUESTIONS
+GOLD_QUESTIONS = TUNING_QUESTIONS + HELDOUT_QUESTIONS + HELDOUT_V2_QUESTIONS + HELDOUT_V3_QUESTIONS + HELDOUT_V4_QUESTIONS
