@@ -17,18 +17,30 @@ from .tools import TOOL_FUNCTIONS, TOOL_SCHEMAS
 
 _MAX_PARALLEL_TOOLS = 4  # NAVER·DART·KRX에 한꺼번에 너무 많이 몰리지 않도록 동시 실행 수 제한
 MAX_ITERATIONS = 7  # 계획서 §1.1: 무한 루프 방지 하드리밋 (원인 카테고리별 검색 여유를 위해 5→7)
-LOG_PATH = Path(__file__).resolve().parent.parent.parent / "logs" / "agent_runs.md"
+# 스텝 수 제한과 별개의 총량 상한. 병렬 4개 x 7스텝이면 이론상 질문 하나에 도구 호출 28회까지
+# 가능해 비용·지연이 커질 수 있다 (실측 최대 사용치보다 넉넉히 잡아 정상적인 멀티홉은 안 막음).
+MAX_TOOL_CALLS = 20
+LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
 
 SYSTEM_PROMPT = (
     "너는 종목 리서치 어시스턴트야. get_financial_data(DART 재무 데이터), search_news(뉴스 검색), "
-    "get_stock_price(주가·수익률·PER/PBR/시가총액), compare_peers(같은 업종 회사들과 재무 지표 순위 비교) "
-    "네 도구와, 뉴스 기사 본문을 읽는 read_articles를 상황에 맞게 골라서 호출해 질문에 답해. "
+    "get_stock_price(주가·수익률·PER/PBR/시가총액), get_technical_analysis(이동평균/RSI/MACD/볼린저밴드/"
+    "거래량/공매도/외국인·기관 수급), compare_peers(같은 업종 회사들과 재무 지표 순위 비교) "
+    "다섯 도구와, 뉴스 기사 본문을 읽는 read_articles를 상황에 맞게 골라서 호출해 질문에 답해. "
     "재무 숫자가 필요하면 get_financial_data, 실적 원인·전망·업계 이슈 같은 정성적 맥락이 필요하면 "
     "search_news, 주가가 오르내린 사실이나 밸류에이션(비싼지/싼지) 확인이 필요하면 get_stock_price, "
+    "차트·기술적 지표(이평선/RSI/MACD/볼린저밴드)나 공매도·수급이 필요하면 get_technical_analysis, "
     "'업종 1위', '경쟁사 대비', '같은 업종에서 높은 편인지' 같은 비교가 필요하면 compare_peers를 써. "
-    "질문에 특정 연도(예: 2025년)가 있으면 get_financial_data의 year를 지정해.\n\n"
+    "질문에 특정 연도(예: 2025년)가 있으면 get_financial_data의 year를 지정해. "
+    "get_technical_analysis의 볼린저밴드 신호나 스퀴즈는 확정된 미래 예측이 아니라 현재 변동성 상태에 "
+    "대한 룰 기반 관찰이니, 답변에서도 단정적 예측처럼 말하지 말고 '~신호가 있다' 정도로 전달해.\n\n"
     f"{PREMISE_CHECK_RULE}\n\n"
     f"{ANSWER_RULE}\n\n"
+    "질문이 재무 데이터의 특정 기간(예: '1분기', '상반기', '3분기 누적')과 '같은 기간' 주가를 묻거나 "
+    "실적과 주가를 비교하면, get_financial_data 응답 첫머리의 '기간 YYYY-MM-DD ~ YYYY-MM-DD'를 그대로 "
+    "get_stock_price의 start/end로 써. 임의로 기간을 넓히거나(예: 1분기를 상반기로 바꿔서 조회) "
+    "start/end를 생략해 기본값(최근 30일)을 쓰면 안 돼 — 다른 기간의 주가를 보고 답하면 '같은 기간'이라는 "
+    "전제 자체가 틀어져서, 실제로는 맞는 전제를 틀렸다고 잘못 바로잡게 된다.\n\n"
     "'실적/가격이 왜 이랬는지' 같은 원인을 물으면:\n"
     "1. 원인은 하나가 아닐 수 있다는 전제로 최소한 "
     "아래 서로 다른 카테고리 중 관련 있어 보이는 걸 각각 별도 검색으로 확인해봐 — 한 카테고리에서 "
@@ -128,8 +140,19 @@ def _verify_answer(client: OpenAI, question: str, draft: str, transcript: list[d
     return resp.choices[0].message.content or draft
 
 
-def run_agent(question: str) -> dict:
+def _forced_final_answer(client: OpenAI, messages: list[dict], usage: dict) -> str:
+    """스텝 상한 또는 도구 호출 총량 상한 도달 시, 도구 호출 없이 지금까지 모은 정보로 답변을 강제 생성."""
+    messages = messages + [{"role": "user", "content": "지금까지 모은 정보로 최종 답변을 작성해줘 (더 이상 도구 호출 금지)."}]
+    resp = client.chat.completions.create(model=PLANNER_MODEL, messages=messages)
+    record_usage(usage, resp, PLANNER_MODEL)
+    return resp.choices[0].message.content
+
+
+def run_agent(question: str, verify: bool = True) -> dict:
     """ReAct 루프 실행 후 조회 자료로 답변을 검증한다.
+
+    verify=False는 ablation용: 검증 단계(_verify_answer)를 끄고 초안을 그대로 최종 답변으로 쓴다.
+    "도구 선택"의 효과와 "답변 검증 단계"의 효과가 뒤섞이지 않는지 보려면 이 옵션으로 실행해 비교한다.
 
     반환: {"answer"(검증 후), "draft_answer"(검증 전), "transcript"(도구 호출 기록, 호출별 소요 시간 포함),
     "n_steps", "financial_guard_triggered"(재무 도구를 안 불러 되돌렸는지), "usage"(모델별 토큰 사용량)}
@@ -144,6 +167,7 @@ def run_agent(question: str) -> dict:
     start = time.perf_counter()
     n_steps = 0
     guard_triggered = False
+    answer = None
 
     for step in range(1, MAX_ITERATIONS + 1):
         n_steps = step
@@ -177,15 +201,17 @@ def run_agent(question: str) -> dict:
                 {"step": step, "tool": fn_name, "args": args, "result": result, "elapsed": round(tool_elapsed, 2)}
             )
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+
+        if len(transcript) >= MAX_TOOL_CALLS:
+            # 스텝 상한(7)과 별개로, 병렬 호출이 몰려 총 호출 수가 먼저 상한을 넘으면 여기서 끊는다.
+            answer = _forced_final_answer(client, messages, usage)
+            break
     else:
-        # 하드리밋 도달 - 도구 호출 없이 지금까지 모은 정보로 강제 답변 생성
-        messages.append({"role": "user", "content": "지금까지 모은 정보로 최종 답변을 작성해줘 (더 이상 도구 호출 금지)."})
-        resp = client.chat.completions.create(model=PLANNER_MODEL, messages=messages)
-        record_usage(usage, resp, PLANNER_MODEL)
-        answer = resp.choices[0].message.content
+        # 스텝 상한 도달 - 도구 호출 없이 지금까지 모은 정보로 강제 답변 생성
+        answer = _forced_final_answer(client, messages, usage)
 
     draft = answer
-    answer = _verify_answer(client, question, draft, transcript, usage)
+    answer = _verify_answer(client, question, draft, transcript, usage) if verify else draft
     elapsed = time.perf_counter() - start
     _log_run(question, transcript, answer, elapsed, n_steps)
     return {
@@ -198,9 +224,14 @@ def run_agent(question: str) -> dict:
     }
 
 
+def _log_path() -> Path:
+    """월별 파일로 나눠 logs/agent_runs.md 하나가 무한정 커지는 것을 막는다."""
+    return LOG_DIR / f"agent_runs_{datetime.now().strftime('%Y-%m')}.md"
+
+
 def _log_run(question: str, transcript: list[dict], answer: str, elapsed_sec: float, n_steps: int) -> None:
-    """실행 기록을 logs/agent_runs.md에 사람이 읽기 좋은 형태로 append."""
-    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    """실행 기록을 logs/agent_runs_YYYY-MM.md에 사람이 읽기 좋은 형태로 append."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     parts = [f"## [{timestamp}] {n_steps}스텝 · {elapsed_sec:.1f}초 · 계획 {PLANNER_MODEL} / 답변 {ANSWER_MODEL}\n", f"### 질문\n{question}\n"]
@@ -208,5 +239,5 @@ def _log_run(question: str, transcript: list[dict], answer: str, elapsed_sec: fl
         parts.append(f"### Step {t['step']}: `{t['tool']}({t['args']})`\n```\n{t['result']}\n```\n")
     parts.append(f"### 최종 답변\n{answer}\n\n---\n")
 
-    with open(LOG_PATH, "a", encoding="utf-8") as f:
+    with open(_log_path(), "a", encoding="utf-8") as f:
         f.write("\n".join(parts))

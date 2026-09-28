@@ -55,6 +55,18 @@ def get_market_cap(ticker: str, on: str) -> dict | None:
     return _cached("krx_market_cap", (ticker, on), on, lambda: _fetch_market_cap(ticker, on))
 
 
+def get_shorting(ticker: str, start: str, end: str) -> list[dict]:
+    """start~end 일별 공매도 거래량/비중. KRX 로그인 없으면 빈 리스트."""
+    return _cached("krx_shorting", (ticker, start, end), end, lambda: _fetch_shorting(ticker, start, end))
+
+
+def get_investor_net_buying(ticker: str, start: str, end: str) -> dict | None:
+    """start~end 기간 누적 투자자구분별(외국인/기관합계/개인 등) 순매수 금액. KRX 로그인 없으면 None."""
+    return _cached(
+        "krx_investor", (ticker, start, end), end, lambda: _fetch_investor_net_buying(ticker, start, end)
+    )
+
+
 def _fetch_ohlcv(ticker: str, start: str, end: str) -> list[dict]:
     df = stock.get_market_ohlcv(_krx_date(start), _krx_date(end), ticker)
     return [
@@ -99,3 +111,31 @@ def _fetch_market_cap(ticker: str, on: str) -> dict | None:
         "market_cap": int(row["시가총액"]),
         "shares": int(row["상장주식수"]),
     }
+
+
+def _fetch_shorting(ticker: str, start: str, end: str) -> list[dict]:
+    try:
+        df = stock.get_shorting_volume_by_date(_krx_date(start), _krx_date(end), ticker)
+    except (KeyError, ValueError):
+        # KRX 로그인 정보가 없으면 빈 DataFrame이 아니라 예외를 던진다 (2026-09 실측 확인)
+        return []
+    if df.empty:
+        return []
+    return [
+        {
+            "date": idx.strftime("%Y-%m-%d"),
+            "volume": int(row["거래량"]),
+            "ratio_pct": float(row["비중"]),
+        }
+        for idx, row in df.iterrows()
+    ]
+
+
+def _fetch_investor_net_buying(ticker: str, start: str, end: str) -> dict | None:
+    try:
+        df = stock.get_market_trading_value_by_investor(_krx_date(start), _krx_date(end), ticker)
+    except (KeyError, ValueError):
+        return None
+    if df.empty:
+        return None
+    return {str(investor): int(row["순매수"]) for investor, row in df.iterrows()}

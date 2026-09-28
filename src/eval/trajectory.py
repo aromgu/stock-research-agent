@@ -18,10 +18,13 @@ def analyze_trajectory(run: dict) -> dict:
     """한 실행의 도구 호출 경로 지표: 호출 수, 중복 호출 수, 빈 결과 호출 수, LLM 스텝 수."""
     transcript = run.get("transcript")
     if transcript is None:
-        # 고정 파이프라인은 코드가 정한 순서대로 도구마다 한 번씩만 부른다
-        sections = run["context"].split("\n\n[") if run["predicted_sources"] else []
+        # 고정 파이프라인은 코드가 정한 순서대로 도구마다 한 번씩 불러 "[도구 이름]\n결과" 블록을
+        # 이어붙인다 - 이 블록 수가 실제 호출 수다. 예전엔 predicted_sources(출처 "종류" 수: dart/
+        # news/price 최대 3)를 썼는데, all_tools_baseline은 실제로 6개 도구(재무/뉴스/주가/기술적
+        # 분석/업종비교/기사본문)를 부르는데도 3으로 축소 집계되고 있었다.
+        sections = run["context"].split("\n\n[") if run["context"] else []
         return {
-            "tool_calls": len(run["predicted_sources"]),
+            "tool_calls": len(sections),
             "duplicate_calls": 0,
             "empty_calls": sum(_is_empty(s) for s in sections),
             "llm_steps": None,

@@ -37,31 +37,48 @@ from .graders import (
 from .trajectory import analyze_trajectory
 from . import stats
 
-LOG_PATH = Path(__file__).resolve().parent.parent.parent / "logs" / "phase5_eval.md"
+LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
 SUMMARY_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "phase5_summary_export.md"
 RUNS_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "phase5_runs_export.jsonl"
 
-# compare_peers도 DART 재무 데이터를 쓰는 도구라 인용 출처는 dart로, 기사 본문 읽기는 news로 본다
+
+def _log_path() -> Path:
+    """월별 파일로 나눠 logs/phase5_eval.md 하나가 무한정 커지는 것을 막는다."""
+    return LOG_DIR / f"phase5_eval_{datetime.now().strftime('%Y-%m')}.md"
+
+# compare_peers도 DART 재무 데이터를 쓰는 도구라 인용 출처는 dart로, 기사 본문 읽기는 news로 본다.
+# get_technical_analysis는 pykrx 시세/수급 데이터 기반이라 price로 본다 (예전엔 이 매핑이 없어서
+# 이 도구만 부른 실행은 인용 출처가 통째로 빠졌다 - 실측으로는 항상 get_stock_price와 같이 불려서
+# 실제 채점 결과에 영향은 없었지만, 이 도구만 부르는 경우가 생기면 조용히 틀릴 수 있었다).
 _TOOL_TO_SOURCE = {
     "get_financial_data": "dart",
     "search_news": "news",
     "get_stock_price": "price",
+    "get_technical_analysis": "price",
     "compare_peers": "dart",
     "read_articles": "news",
 }
 
 APPROACHES = ["dart_baseline", "news_baseline", "all_tools_baseline", "agent"]
+# ablation 전용: 기본 4방식 비교에는 안 넣고(요약 표를 복잡하게 만들지 않기 위해) --approaches로 지정했을 때만 실행.
+# "도구 선택"의 효과와 "검증 단계"의 효과를 분리해서 보려면 이 둘을 나란히 돌린다:
+#   agent_no_verify        vs agent                  → 검증 단계가 에이전트 점수에 얼마나 기여하는지
+#   all_tools_baseline     vs all_tools_baseline_verified → 검증 단계를 비교군에도 주면 격차가 줄어드는지
+ABLATION_APPROACHES = ["agent_no_verify", "all_tools_baseline_verified"]
 APPROACH_LABEL = {
     "dart_baseline": "Phase 3 · DART-only 고정 파이프라인",
     "news_baseline": "Phase 3 · News-only 고정 파이프라인",
     "all_tools_baseline": "Phase 3 · 항상 모든 도구 고정 파이프라인",
     "agent": "Phase 4 · 플래너 에이전트",
+    "agent_no_verify": "ablation · 플래너 에이전트 (검증 단계 없음)",
+    "all_tools_baseline_verified": "ablation · 항상 모든 도구 (검증 단계 추가)",
 }
 # 쌍대 비교는 에이전트 vs 가장 강한 비교군 하나만 (심판 호출 = 질문 수 × 2회, 순서 바꿔 두 번)
 PAIRWISE_PAIR = ("agent", "all_tools_baseline")
 
 # 요약 표에 보여줄 순서 (주 지표가 먼저)
 _SPLITS = (
+    ("heldout_v5", "held-out v5"),
     ("heldout_v4", "held-out v4"),
     ("heldout_v3", "held-out v3"),
     ("heldout_v2", "held-out v2"),
@@ -69,8 +86,9 @@ _SPLITS = (
     ("tuning", "튜닝 셋"),
 )
 _SPLIT_NOTE = {
-    "heldout_v4": "코드가 규칙과 고정 시드로 생성, 결과를 보기 전에 파일 해시 고정 — 현재 주 지표",
-    "heldout_v3": "종목 확장·업종 비교 이후 결과를 보기 전에 확정, 새 기능을 묻는 현재 주 지표",
+    "heldout_v5": "v4(결과를 본 세트, 얼려둠)에 실적-주가 괴리형·범위 밖 질문 유형을 더해 새로 생성 — 현재 주 지표",
+    "heldout_v4": "코드가 규칙과 고정 시드로 생성, 결과를 보기 전에 파일 해시 고정 (2026-09-28 결과를 봤으므로 이후 고치지 않음)",
+    "heldout_v3": "종목 확장·업종 비교 이후 결과를 보기 전에 확정, 새 기능을 묻는 지표",
     "heldout_v2": "결과를 보기 전에 확정했으나 이후 연도 지정 결함을 v2에서 발견해 고침",
     "heldout": "h5를 보고 에이전트·채점을 고쳐 일부 오염됨",
     "tuning": "이 질문들을 보고 프롬프트·채점기를 고쳤음 — 과대평가 가능",
@@ -91,16 +109,16 @@ def _run_news_baseline(gq: dict) -> dict:
     return {**result, "predicted_sources": {"news"}, "elapsed": elapsed, "transcript": None}
 
 
-def _run_all_tools_baseline(gq: dict) -> dict:
+def _run_all_tools_baseline(gq: dict, verify: bool = False) -> dict:
     start = time.perf_counter()
-    result = baseline.answer_with_all_tools(gq["question"], gq["company"])
+    result = baseline.answer_with_all_tools(gq["question"], gq["company"], verify=verify)
     elapsed = time.perf_counter() - start
     return {**result, "predicted_sources": {"dart", "news", "price"}, "elapsed": elapsed, "transcript": None}
 
 
-def _run_agent(gq: dict) -> dict:
+def _run_agent(gq: dict, verify: bool = True) -> dict:
     start = time.perf_counter()
-    result = run_agent(gq["question"])
+    result = run_agent(gq["question"], verify=verify)
     elapsed = time.perf_counter() - start
     predicted = {_TOOL_TO_SOURCE[t["tool"]] for t in result["transcript"] if t["tool"] in _TOOL_TO_SOURCE}
     context = "\n\n".join(f"[{t['tool']}({t['args']})]\n{t['result']}" for t in result["transcript"])
@@ -121,12 +139,14 @@ _RUNNERS = {
     "news_baseline": _run_news_baseline,
     "all_tools_baseline": _run_all_tools_baseline,
     "agent": _run_agent,
+    "agent_no_verify": lambda gq: _run_agent(gq, verify=False),
+    "all_tools_baseline_verified": lambda gq: _run_all_tools_baseline(gq, verify=True),
 }
 
 
 def _log_run(gq: dict, approach: str, run: dict, numeric_grade: dict, reference: str | None, judge: dict) -> None:
-    """실험 입출력을 logs/phase5_eval.md에 사람이 읽기 좋은 형태로 append."""
-    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    """실험 입출력을 logs/phase5_eval_YYYY-MM.md에 사람이 읽기 좋은 형태로 append."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     parts = [
         f"## [{timestamp}] {gq['id']} · {APPROACH_LABEL[approach]} · {run['elapsed']:.1f}초\n",
@@ -153,13 +173,13 @@ def _log_run(gq: dict, approach: str, run: dict, numeric_grade: dict, reference:
         f"- 판정: {'PASS' if judge['pass'] else 'FAIL' if judge['pass'] is False else '판정 불가'}\n"
         f"- 근거: {judge['reason']}\n\n---\n"
     )
-    with open(LOG_PATH, "a", encoding="utf-8") as f:
+    with open(_log_path(), "a", encoding="utf-8") as f:
         f.write("\n".join(parts))
 
 
 def _log_pairwise(gq: dict, result: dict) -> None:
     a, b = PAIRWISE_PAIR
-    with open(LOG_PATH, "a", encoding="utf-8") as f:
+    with open(_log_path(), "a", encoding="utf-8") as f:
         f.write(
             f"## [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {gq['id']} · 쌍대 비교 "
             f"({APPROACH_LABEL[a]} vs {APPROACH_LABEL[b]})\n\n"
@@ -179,17 +199,27 @@ def _load_runs() -> dict[tuple[str, str, int], dict]:
 
 
 def _save_runs(runs: dict[tuple[str, str, int], dict]) -> None:
+    """전체를 다시 써서 압축한다 (중복 줄 제거). 생성 도중엔 안 쓰고, 배치가 끝난 뒤 한 번만 부른다."""
     RUNS_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(RUNS_PATH, "w", encoding="utf-8") as f:
         for record in runs.values():
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+def _append_run(record: dict) -> None:
+    RUNS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(RUNS_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def _generate(questions: list[dict], approaches: list[str], resume: bool, repeat: int) -> None:
     """답변 생성 단계 (API 비용 대부분). 선택한 (질문, 방식, 반복 번호)만 새로 생성해 저장된 답변에서 교체한다.
 
-    한 건 끝날 때마다 바로 저장해서 중간에 끊겨도 --resume으로 이어갈 수 있다. 같은 질문도 실행마다 에이전트
-    행동이 달라서, --repeat N이면 N번씩 생성해 평균과 흔들림을 본다.
+    한 건 끝날 때마다 한 줄만 추가로 저장해서(전체 재작성 X) 중간에 끊겨도 --resume으로 이어갈 수 있다
+    (예전엔 저장할 때마다 파일 전체를 다시 써서, 실행이 길어질수록(예: 220건) 뒤로 갈수록 매번 수 MB씩
+    쓰는 O(n²) 비용이었다). _load_runs()는 같은 키의 마지막 줄을 쓰므로 중간에 재실행해 중복 줄이 쌓여도
+    정확성엔 문제없고, 배치가 끝나면 한 번 압축(_save_runs)해서 중복 줄을 정리한다. 같은 질문도 실행마다
+    에이전트 행동이 달라서, --repeat N이면 N번씩 생성해 평균과 흔들림을 본다.
     """
     runs = _load_runs()
     for rep in range(repeat):
@@ -198,9 +228,11 @@ def _generate(questions: list[dict], approaches: list[str], resume: bool, repeat
                 if resume and (gq["id"], approach, rep) in runs:
                     continue
                 run = _RUNNERS[approach](gq)
-                runs[(gq["id"], approach, rep)] = _record(gq, approach, rep, run)
-                _save_runs(runs)
+                record = _record(gq, approach, rep, run)
+                runs[(gq["id"], approach, rep)] = record
+                _append_run(record)
                 print(f"[generated] rep{rep} {gq['id']} / {approach} ({run['elapsed']:.1f}s)")
+    _save_runs(runs)  # 배치 끝에 한 번 압축
 
 
 def _record(gq: dict, approach: str, rep: int, run: dict) -> dict:
@@ -227,7 +259,10 @@ def main() -> None:
     mode.add_argument("--regrade", action="store_true", help="생성 없이 저장된 답변으로 채점만")
     parser.add_argument("--questions", help="쉼표로 구분한 질문 id만 실행 (예: q5_multihop_samsung,h1_debt_ratio)")
     parser.add_argument("--splits", help=f"쉼표로 구분한 셋만 실행 (선택: {','.join(s for s, _ in _SPLITS)})")
-    parser.add_argument("--approaches", help=f"쉼표로 구분한 방식만 실행 (선택: {','.join(APPROACHES)})")
+    parser.add_argument(
+        "--approaches",
+        help=f"쉼표로 구분한 방식만 실행 (기본 4방식: {','.join(APPROACHES)} / ablation 전용: {','.join(ABLATION_APPROACHES)})",
+    )
     parser.add_argument("--repeat", type=int, default=1, help="(질문, 방식)마다 몇 번 생성할지 (실행마다 결과가 흔들리는 정도를 보려면 3)")
     parser.add_argument("--skip-judge", action="store_true", help="LLM 심판·쌍대 비교 생략 (OpenAI 호출 없이 흐름 점검)")
     args = parser.parse_args()
@@ -245,8 +280,9 @@ def main() -> None:
         if unknown:
             parser.error(f"알 수 없는 질문 id: {sorted(unknown)}")
     approaches = args.approaches.split(",") if args.approaches else APPROACHES
-    if set(approaches) - set(APPROACHES):
-        parser.error(f"알 수 없는 방식: {sorted(set(approaches) - set(APPROACHES))}")
+    _known_approaches = set(APPROACHES) | set(ABLATION_APPROACHES)
+    if set(approaches) - _known_approaches:
+        parser.error(f"알 수 없는 방식: {sorted(set(approaches) - _known_approaches)}")
     # 셋 단위 실행은 그 셋의 요약을 따로 저장하고, 질문·방식 일부만 돌린 경우는 요약을 쓰지 않는다
     partial = bool(args.questions) or approaches is not APPROACHES
 
@@ -309,7 +345,7 @@ def main() -> None:
                 pairwise_rows.append({"question_id": gq["id"], "split": gq["split"], "rep": rep, **result})
                 print(f"[pairwise] rep{rep} {gq['id']} winner={result['winner']} consistent={result['consistent']}")
 
-    print(f"\n상세 로그: {LOG_PATH}")
+    print(f"\n상세 로그: {_log_path()}")
     if partial:
         # 일부만 채점한 결과로 요약 표를 덮어쓰면 오해를 부르므로 갱신하지 않는다
         print("일부 질문/방식만 실행해서 요약 리포트는 갱신하지 않았습니다.")

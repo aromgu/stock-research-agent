@@ -28,3 +28,6 @@ data/*_export.*
 
 .ipynb_checkpoints/
 .DS_Store
+
+# Claude Code 로컬 런타임 상태 (예: scheduled_tasks.lock) - 프로젝트 소스 아님
+.claude/

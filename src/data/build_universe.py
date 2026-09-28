@@ -6,7 +6,6 @@ DART·KRX 모두 무료. 약 50개사 × 보고서 4개라 처음엔 몇 분 걸
 
 import argparse
 import json
-import sqlite3
 
 from pykrx import stock
 
@@ -56,7 +55,10 @@ def build_snapshot(as_of: str, top_n: int) -> dict:
 
 
 def _n_periods(corp_code: str) -> int:
-    conn = sqlite3.connect(cf.DB_PATH)
+    # cf._connect()를 써야 financials 테이블이 없는 완전히 새 DB에서도 스키마가 먼저 생성된다.
+    # 예전엔 sqlite3.connect(cf.DB_PATH)로 바로 SELECT해서, financials.db가 아예 없던 환경(첫 실행)에서
+    # "no such table: financials"로 죽었다.
+    conn = cf._connect()
     try:
         return conn.execute(
             "SELECT COUNT(DISTINCT bsns_year || reprt_code) FROM financials WHERE corp_code=?", (corp_code,)

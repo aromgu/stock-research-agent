@@ -20,6 +20,9 @@ def _connect() -> sqlite3.Connection:
     CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     # 도구를 병렬로 실행하면 여러 스레드가 동시에 쓰므로 잠금 대기 시간을 넉넉히 준다
     conn = sqlite3.connect(CACHE_PATH, timeout=30)
+    # 기본(journal) 모드는 쓰기 하나가 읽기까지 전부 막는다. WAL은 읽기와 쓰기가 서로를 막지 않아서
+    # 도구를 병렬 실행할 때(최대 4개 스레드가 동시에 캐시를 읽고 쓴다) 잠금 경합이 크게 줄어든다.
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(
         "CREATE TABLE IF NOT EXISTS kv (namespace TEXT, key TEXT, value TEXT, expires_at REAL, "
         "created_at REAL, PRIMARY KEY (namespace, key))"

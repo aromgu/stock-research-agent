@@ -15,6 +15,7 @@ from ..data import collect_financials as cf
 from ..data import dart_client as dc
 from ..data import news_client as nc
 from ..data import price_client as pc
+from ..data import technical as tech
 from ..data import universe as uv
 
 DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "financials.db"
@@ -28,6 +29,8 @@ _PERIOD_END_MONTH = {"11013": 3, "11012": 6, "11014": 9, "11011": 12}
 
 _DEFAULT_PRICE_WINDOW_DAYS = 30
 _MAX_DAILY_CLOSES_SHOWN = 40  # 기간이 길면 일별 종가 나열이 너무 길어져서 생략
+_TECH_LOOKBACK_DAYS = 400  # 240거래일 이동평균 계산 + 휴장일 여유
+_FLOW_WINDOW_DAYS = 30  # 공매도/투자자 수급 최근 누적 조회 기간
 
 
 def _available_periods(corp_code: str) -> list[tuple[str, str]]:
@@ -263,6 +266,82 @@ def get_stock_price(company: str, start: str | None = None, end: str | None = No
     return "\n".join(lines)
 
 
+def get_technical_analysis(company: str, end: str | None = None) -> str:
+    """Technical Tool: 이동평균선/RSI/MACD/거래량/볼린저밴드와 공매도·외국인/기관 수급을 종합한다.
+
+    end(YYYY-MM-DD) 미지정 시 오늘 기준. 240일선까지 계산하려고 넉넉히(약 1년 3개월) 과거
+    시세를 받는다. 공매도/수급은 KRX 로그인 정보(.env KRX_ID/KRX_PW)가 없으면 조회 불가로 표시된다
+    (일별 시세와 달리 이 두 API는 로그인 없이 부르면 예외를 던진다 — price_client에서 흡수해 빈 값으로 돌려줌).
+    """
+    end = end or date.today().isoformat()
+    start = (date.fromisoformat(end) - timedelta(days=_TECH_LOOKBACK_DAYS)).isoformat()
+    try:
+        ticker = dc.get_stock_code(company)
+    except KeyError as e:
+        candidates = ", ".join(dc.suggest_listed_names(company)) or "없음"
+        return f"{e.args[0]} 비슷한 상장사 이름: {candidates} (정확한 이름으로 다시 조회)"
+
+    rows = pc.get_ohlcv(ticker, start, end)
+    if not rows:
+        return f"{company}({ticker}): {start} ~ {end} 기간의 시세 데이터가 없습니다 (휴장 기간이거나 날짜 범위 오류)."
+
+    last = rows[-1]
+    lines = [f"{company}({ticker}) 기술적 분석 ({last['date']} 기준, 종가 {last['close']:,}원)"]
+
+    ma_parts = [
+        f"{w}일선 {v:,.0f}원" if v is not None else f"{w}일선 데이터부족(거래일 {len(rows)}일 확보)"
+        for w, v in tech.moving_averages(rows).items()
+    ]
+    lines.append("- 이동평균: " + ", ".join(ma_parts))
+
+    rsi_value = tech.rsi(rows)
+    lines.append(f"- RSI(14): {rsi_value:.1f} ({tech.rsi_zone(rsi_value)})" if rsi_value is not None else "- RSI(14): 데이터 부족")
+
+    macd_result = tech.macd(rows)
+    if macd_result:
+        cross_note = f", {macd_result['cross']}" if macd_result["cross"] else ""
+        lines.append(
+            f"- MACD: {macd_result['macd']:.1f} / 시그널 {macd_result['signal']:.1f} / "
+            f"히스토그램 {macd_result['histogram']:+.1f}{cross_note}"
+        )
+    else:
+        lines.append("- MACD: 데이터 부족")
+
+    vol = tech.volume_vs_average(rows)
+    if vol:
+        lines.append(f"- 거래량: 오늘 {vol['today']:,}주, 직전 20일 평균 {vol['avg']:,.0f}주 대비 {vol['ratio']:.2f}배")
+    else:
+        lines.append("- 거래량: 데이터 부족")
+
+    bb = tech.bollinger(rows)
+    if bb:
+        squeeze_note = f" / {bb['squeeze']}" if bb["squeeze"] else ""
+        lines.append(
+            f"- 볼린저밴드(20,2): 상단 {bb['upper']:,.0f} / 중심 {bb['middle']:,.0f} / 하단 {bb['lower']:,.0f} "
+            f"(밴드폭 {bb['width_pct']:.1f}%) — {bb['signal']}{squeeze_note}"
+        )
+    else:
+        lines.append("- 볼린저밴드: 데이터 부족")
+
+    flow_start = (date.fromisoformat(end) - timedelta(days=_FLOW_WINDOW_DAYS)).isoformat()
+    shorting = pc.get_shorting(ticker, flow_start, end)
+    if shorting:
+        total = sum(s["volume"] for s in shorting)
+        avg_ratio = sum(s["ratio_pct"] for s in shorting) / len(shorting)
+        lines.append(f"- 공매도(최근 {len(shorting)}거래일 누적): {total:,}주, 평균 비중 {avg_ratio:.2f}%")
+    else:
+        lines.append("- 공매도: 조회 불가 (KRX 로그인 정보 없음)")
+
+    net_buying = pc.get_investor_net_buying(ticker, flow_start, end)
+    if net_buying:
+        parts = ", ".join(f"{investor} {amount:+,}원" for investor, amount in net_buying.items())
+        lines.append(f"- 투자자별 순매수(최근 {_FLOW_WINDOW_DAYS}일 누적): {parts}")
+    else:
+        lines.append("- 외국인/기관 수급: 조회 불가 (KRX 로그인 정보 없음)")
+
+    return "\n".join(lines)
+
+
 # 업종 비교 지표: (분자 계정, 분모 계정, 종류). 손익 항목은 "연초~해당 분기 누적" 기준 (1분기·연간은 당기 값이 곧 누적)
 _PEER_METRICS = {
     "영업이익률": ("영업이익", "매출액", "ratio"),
@@ -475,6 +554,31 @@ TOOL_SCHEMAS.append(
     {
         "type": "function",
         "function": {
+            "name": "get_technical_analysis",
+            "description": (
+                "이동평균선(5/20/60/120/240일), RSI 과매수·과매도, MACD, 거래량(평균 대비 배율), "
+                "볼린저밴드(밴드 이탈·스퀴즈 신호), 공매도, 외국인/기관 순매수를 종합 조회한다. "
+                "'차트 분석해줘', '기술적으로 어때', '과매수/과매도 상태야?', '공매도 많이 들어왔어?', "
+                "'외국인 수급은?' 같은 질문에 사용. 공매도/수급은 KRX 로그인 정보가 없으면 조회 불가로 나올 수 있음 "
+                "— 그 경우 조회 불가라고 사실대로 답하고 다른 근거(재무/뉴스)로 보완할 것. "
+                "볼린저밴드 신호는 예측이 아니라 현재 변동성 상태에 대한 룰 기반 관찰이므로 확정적 미래 예측처럼 말하지 말 것."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company": {"type": "string", "description": "회사명 또는 종목코드 (예: 삼성전자, 005930)"},
+                    "end": {"type": "string", "description": "기준일 YYYY-MM-DD (선택, 기본값: 오늘)"},
+                },
+                "required": ["company"],
+            },
+        },
+    }
+)
+
+TOOL_SCHEMAS.append(
+    {
+        "type": "function",
+        "function": {
             "name": "compare_peers",
             "description": (
                 "같은 업종 회사들을 재무 지표로 순위를 매긴다. '업종 1위', '경쟁사 대비', '같은 업종에서 높은 편인지' 같은 "
@@ -521,6 +625,7 @@ TOOL_FUNCTIONS = {
     "get_financial_data": get_financial_data,
     "search_news": search_news,
     "get_stock_price": get_stock_price,
+    "get_technical_analysis": get_technical_analysis,
     "compare_peers": compare_peers,
     "read_articles": read_articles,
 }

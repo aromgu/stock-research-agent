@@ -57,5 +57,23 @@ class TestHeldoutV4Frozen(unittest.TestCase):
         self.assertTrue(any(agrees) and not all(agrees))
 
 
+class TestHeldoutV5Frozen(unittest.TestCase):
+    def test_file_matches_frozen_hash_and_new_types_present(self):
+        from src.eval.gold_set import HELDOUT_V5_QUESTIONS, HELDOUT_V5_SHA256
+
+        path = Path(__file__).resolve().parent.parent / "src" / "eval" / "heldout_v5.json"
+        raw = path.read_bytes().replace(b"\r\n", b"\n")
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), HELDOUT_V5_SHA256)
+        self.assertEqual(len(HELDOUT_V5_QUESTIONS), 55)
+        payload = json.loads(raw)
+        types = {q["type"] for q in payload["questions"]}
+        self.assertIn("divergence", types)
+        self.assertIn("out_of_scope", types)
+        # out_of_scope는 정답 수치가 없는(rubric으로만 채점) 유형이어야 함
+        out_of_scope = [q for q in payload["questions"] if q["type"] == "out_of_scope"]
+        self.assertTrue(all(q["numeric_target"] is None for q in out_of_scope))
+        self.assertTrue(all(q["expected_sources"] == [] for q in out_of_scope))
+
+
 if __name__ == "__main__":
     unittest.main()

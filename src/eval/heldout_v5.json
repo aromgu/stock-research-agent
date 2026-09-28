@@ -1,0 +1,1036 @@
+{
+ "seed": 20260929,
+ "generator": "src/eval/make_heldout_v5.py",
+ "questions": [
+  {
+   "id": "v5_amount_1",
+   "type": "amount",
+   "question": "삼성화재해상보험의 2025년 연간 순이익 알려줘",
+   "rubric": "삼성화재해상보험의 2025년 연간 순이익을 구체적 금액으로 제시해야 한다. 다른 기간(분기 단독 등)의 값을 결론으로 제시하거나 수치를 제시하지 못하면 fail.",
+   "company": "삼성화재해상보험",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "company": "삼성화재해상보험",
+    "bsns_year": "2025",
+    "reprt_code": "11011",
+    "account_name": "당기순이익(손실)",
+    "amount_field": "thstrm_amount"
+   }
+  },
+  {
+   "id": "v5_amount_2",
+   "type": "amount",
+   "question": "POSCO홀딩스의 2025년 1~9월 누적 매출액 알려줘",
+   "rubric": "POSCO홀딩스의 2025년 1~9월 누적 매출액을 구체적 금액으로 제시해야 한다. 다른 기간(분기 단독 등)의 값을 결론으로 제시하거나 수치를 제시하지 못하면 fail.",
+   "company": "POSCO홀딩스",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "company": "POSCO홀딩스",
+    "bsns_year": "2025",
+    "reprt_code": "11014",
+    "account_name": "매출액",
+    "amount_field": "thstrm_add_amount"
+   }
+  },
+  {
+   "id": "v5_amount_3",
+   "type": "amount",
+   "question": "2026년 상반기(1~6월) 누적 기준으로 ISC 영업이익이 얼마였어?",
+   "rubric": "ISC의 2026년 상반기(1~6월) 누적 영업이익을 구체적 금액으로 제시해야 한다. 다른 기간(분기 단독 등)의 값을 결론으로 제시하거나 수치를 제시하지 못하면 fail.",
+   "company": "ISC",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "company": "ISC",
+    "bsns_year": "2026",
+    "reprt_code": "11012",
+    "account_name": "영업이익",
+    "amount_field": "thstrm_add_amount"
+   }
+  },
+  {
+   "id": "v5_amount_4",
+   "type": "amount",
+   "question": "테크윙의 2025년 1~9월 누적 영업이익 알려줘",
+   "rubric": "테크윙의 2025년 1~9월 누적 영업이익을 구체적 금액으로 제시해야 한다. 다른 기간(분기 단독 등)의 값을 결론으로 제시하거나 수치를 제시하지 못하면 fail.",
+   "company": "테크윙",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "company": "테크윙",
+    "bsns_year": "2025",
+    "reprt_code": "11014",
+    "account_name": "영업이익",
+    "amount_field": "thstrm_add_amount"
+   }
+  },
+  {
+   "id": "v5_amount_5",
+   "type": "amount",
+   "question": "원익머트리얼즈 2025년 1~9월 누적 순이익은 얼마야?",
+   "rubric": "원익머트리얼즈의 2025년 1~9월 누적 순이익을 구체적 금액으로 제시해야 한다. 다른 기간(분기 단독 등)의 값을 결론으로 제시하거나 수치를 제시하지 못하면 fail.",
+   "company": "원익머트리얼즈",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "company": "원익머트리얼즈",
+    "bsns_year": "2025",
+    "reprt_code": "11014",
+    "account_name": "당기순이익(손실)",
+    "amount_field": "thstrm_add_amount"
+   }
+  },
+  {
+   "id": "v5_ratio_1",
+   "type": "ratio",
+   "question": "현대모비스 2026년 1분기 영업이익률 알려줘",
+   "rubric": "현대모비스의 2026년 1분기 기준 영업이익률(영업이익 ÷ 매출액)을 %로 제시해야 한다. 다른 기간 값을 제시하거나 수치가 없으면 fail.",
+   "company": "현대모비스",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "ratio",
+    "company": "현대모비스",
+    "bsns_year": "2026",
+    "reprt_code": "11013",
+    "numerator_account": "영업이익",
+    "denominator_account": "매출액",
+    "amount_field": "thstrm_amount"
+   }
+  },
+  {
+   "id": "v5_ratio_2",
+   "type": "ratio",
+   "question": "두산 2025년 말 부채비율 알려줘",
+   "rubric": "두산의 2025년 말 기준 부채비율(부채총계 ÷ 자본총계)을 %로 제시해야 한다. 다른 기간 값을 제시하거나 수치가 없으면 fail.",
+   "company": "두산",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "ratio",
+    "company": "두산",
+    "bsns_year": "2025",
+    "reprt_code": "11011",
+    "numerator_account": "부채총계",
+    "denominator_account": "자본총계",
+    "amount_field": "thstrm_amount"
+   }
+  },
+  {
+   "id": "v5_ratio_3",
+   "type": "ratio",
+   "question": "POSCO홀딩스 2026년 1분기 영업이익률 알려줘",
+   "rubric": "POSCO홀딩스의 2026년 1분기 기준 영업이익률(영업이익 ÷ 매출액)을 %로 제시해야 한다. 다른 기간 값을 제시하거나 수치가 없으면 fail.",
+   "company": "POSCO홀딩스",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "ratio",
+    "company": "POSCO홀딩스",
+    "bsns_year": "2026",
+    "reprt_code": "11013",
+    "numerator_account": "영업이익",
+    "denominator_account": "매출액",
+    "amount_field": "thstrm_amount"
+   }
+  },
+  {
+   "id": "v5_ratio_4",
+   "type": "ratio",
+   "question": "엘에스일렉트릭 2025년 말 부채비율 알려줘",
+   "rubric": "엘에스일렉트릭의 2025년 말 기준 부채비율(부채총계 ÷ 자본총계)을 %로 제시해야 한다. 다른 기간 값을 제시하거나 수치가 없으면 fail.",
+   "company": "엘에스일렉트릭",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "ratio",
+    "company": "엘에스일렉트릭",
+    "bsns_year": "2025",
+    "reprt_code": "11011",
+    "numerator_account": "부채총계",
+    "denominator_account": "자본총계",
+    "amount_field": "thstrm_amount"
+   }
+  },
+  {
+   "id": "v5_ratio_5",
+   "type": "ratio",
+   "question": "SK이노베이션의 2025년 1~9월 누적 기준 순이익률은 몇 %야?",
+   "rubric": "SK이노베이션의 2025년 1~9월 누적 기준 순이익률(순이익 ÷ 매출액)을 %로 제시해야 한다. 다른 기간 값을 제시하거나 수치가 없으면 fail.",
+   "company": "SK이노베이션",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "ratio",
+    "company": "SK이노베이션",
+    "bsns_year": "2025",
+    "reprt_code": "11014",
+    "numerator_account": "당기순이익(손실)",
+    "denominator_account": "매출액",
+    "amount_field": "thstrm_add_amount"
+   }
+  },
+  {
+   "id": "v5_growth_1",
+   "type": "growth",
+   "question": "한미반도체 2026년 상반기(1~6월) 누적 영업이익은 전년 동기 대비 얼마나 변했어?",
+   "rubric": "한미반도체의 2026년 상반기(1~6월) 누적 영업이익이 전년 동기 대비 몇 % 늘었는지/줄었는지를 증감률 또는 두 기간 금액으로 제시하고 방향을 올바르게 말해야 한다. 방향이 틀리거나 다른 기간끼리 비교하면 fail.",
+   "company": "한미반도체",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "growth",
+    "company": "한미반도체",
+    "bsns_year": "2026",
+    "reprt_code": "11012",
+    "account_name": "영업이익",
+    "current_field": "thstrm_add_amount",
+    "prior_field": "frmtrm_add_amount"
+   }
+  },
+  {
+   "id": "v5_growth_2",
+   "type": "growth",
+   "question": "솔브레인의 2025년 연간 매출액 증감률이 전년 대비 몇 %야?",
+   "rubric": "솔브레인의 2025년 연간 매출액이 전년 대비 몇 % 늘었는지/줄었는지를 증감률 또는 두 기간 금액으로 제시하고 방향을 올바르게 말해야 한다. 방향이 틀리거나 다른 기간끼리 비교하면 fail.",
+   "company": "솔브레인",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "growth",
+    "company": "솔브레인",
+    "bsns_year": "2025",
+    "reprt_code": "11011",
+    "account_name": "매출액",
+    "current_field": "thstrm_amount",
+    "prior_field": "frmtrm_amount"
+   }
+  },
+  {
+   "id": "v5_growth_3",
+   "type": "growth",
+   "question": "SK이노베이션 2026년 상반기(1~6월) 누적 매출액은 전년 동기 대비 얼마나 변했어?",
+   "rubric": "SK이노베이션의 2026년 상반기(1~6월) 누적 매출액이 전년 동기 대비 몇 % 늘었는지/줄었는지를 증감률 또는 두 기간 금액으로 제시하고 방향을 올바르게 말해야 한다. 방향이 틀리거나 다른 기간끼리 비교하면 fail.",
+   "company": "SK이노베이션",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "growth",
+    "company": "SK이노베이션",
+    "bsns_year": "2026",
+    "reprt_code": "11012",
+    "account_name": "매출액",
+    "current_field": "thstrm_add_amount",
+    "prior_field": "frmtrm_add_amount"
+   }
+  },
+  {
+   "id": "v5_growth_4",
+   "type": "growth",
+   "question": "네이버의 2026년 1분기 매출액 증감률이 전년 동기 대비 몇 %야?",
+   "rubric": "NAVER의 2026년 1분기 매출액이 전년 동기 대비 몇 % 늘었는지/줄었는지를 증감률 또는 두 기간 금액으로 제시하고 방향을 올바르게 말해야 한다. 방향이 틀리거나 다른 기간끼리 비교하면 fail.",
+   "company": "NAVER",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "growth",
+    "company": "NAVER",
+    "bsns_year": "2026",
+    "reprt_code": "11013",
+    "account_name": "매출액",
+    "current_field": "thstrm_amount",
+    "prior_field": "frmtrm_amount"
+   }
+  },
+  {
+   "id": "v5_growth_5",
+   "type": "growth",
+   "question": "ISC의 2026년 상반기(1~6월) 누적 매출액 증감률이 전년 동기 대비 몇 %야?",
+   "rubric": "ISC의 2026년 상반기(1~6월) 누적 매출액이 전년 동기 대비 몇 % 늘었는지/줄었는지를 증감률 또는 두 기간 금액으로 제시하고 방향을 올바르게 말해야 한다. 방향이 틀리거나 다른 기간끼리 비교하면 fail.",
+   "company": "ISC",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "growth",
+    "company": "ISC",
+    "bsns_year": "2026",
+    "reprt_code": "11012",
+    "account_name": "매출액",
+    "current_field": "thstrm_add_amount",
+    "prior_field": "frmtrm_add_amount"
+   }
+  },
+  {
+   "id": "v5_compare_1",
+   "type": "compare",
+   "question": "솔브레인, 후성 두 회사 중 2026년 1분기 기준 영업이익률이 더 높은 곳은 어디야? 수치도 알려줘",
+   "rubric": "두 회사의 2026년 1분기 기준 영업이익률을 각각 %로 제시하고, 더 높은 곳(솔브레인)을 올바르게 결론 내려야 한다. 결론이 틀리거나 수치가 없으면 fail.",
+   "company": "솔브레인",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "ratio_pair",
+    "company_a": {
+     "company": "솔브레인",
+     "bsns_year": "2026",
+     "reprt_code": "11013",
+     "numerator_account": "영업이익",
+     "denominator_account": "매출액",
+     "amount_field": "thstrm_amount"
+    },
+    "company_b": {
+     "company": "후성",
+     "bsns_year": "2026",
+     "reprt_code": "11013",
+     "numerator_account": "영업이익",
+     "denominator_account": "매출액",
+     "amount_field": "thstrm_amount"
+    }
+   }
+  },
+  {
+   "id": "v5_compare_2",
+   "type": "compare",
+   "question": "리노공업, ISC 두 회사 중 2026년 상반기(1~6월) 누적 기준 영업이익률이 더 낮은 곳은 어디야? 수치도 알려줘",
+   "rubric": "두 회사의 2026년 상반기(1~6월) 누적 기준 영업이익률을 각각 %로 제시하고, 더 낮은 곳(ISC)을 올바르게 결론 내려야 한다. 결론이 틀리거나 수치가 없으면 fail.",
+   "company": "리노공업",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "ratio_pair",
+    "company_a": {
+     "company": "리노공업",
+     "bsns_year": "2026",
+     "reprt_code": "11012",
+     "numerator_account": "영업이익",
+     "denominator_account": "매출액",
+     "amount_field": "thstrm_add_amount"
+    },
+    "company_b": {
+     "company": "ISC",
+     "bsns_year": "2026",
+     "reprt_code": "11012",
+     "numerator_account": "영업이익",
+     "denominator_account": "매출액",
+     "amount_field": "thstrm_add_amount"
+    }
+   }
+  },
+  {
+   "id": "v5_compare_3",
+   "type": "compare",
+   "question": "심텍, 네패스 두 회사 중 2025년 9월 말 기준 부채비율이 더 낮은 곳은 어디야? 수치도 알려줘",
+   "rubric": "두 회사의 2025년 9월 말 기준 부채비율을 각각 %로 제시하고, 더 낮은 곳(네패스)을 올바르게 결론 내려야 한다. 결론이 틀리거나 수치가 없으면 fail.",
+   "company": "심텍",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "ratio_pair",
+    "company_a": {
+     "company": "심텍",
+     "bsns_year": "2025",
+     "reprt_code": "11014",
+     "numerator_account": "부채총계",
+     "denominator_account": "자본총계",
+     "amount_field": "thstrm_amount"
+    },
+    "company_b": {
+     "company": "네패스",
+     "bsns_year": "2025",
+     "reprt_code": "11014",
+     "numerator_account": "부채총계",
+     "denominator_account": "자본총계",
+     "amount_field": "thstrm_amount"
+    }
+   }
+  },
+  {
+   "id": "v5_compare_4",
+   "type": "compare",
+   "question": "네패스, 하나마이크론 두 회사 중 2026년 상반기(1~6월) 누적 기준 영업이익률이 더 높은 곳은 어디야? 수치도 알려줘",
+   "rubric": "두 회사의 2026년 상반기(1~6월) 누적 기준 영업이익률을 각각 %로 제시하고, 더 높은 곳(하나마이크론)을 올바르게 결론 내려야 한다. 결론이 틀리거나 수치가 없으면 fail.",
+   "company": "네패스",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "ratio_pair",
+    "company_a": {
+     "company": "네패스",
+     "bsns_year": "2026",
+     "reprt_code": "11012",
+     "numerator_account": "영업이익",
+     "denominator_account": "매출액",
+     "amount_field": "thstrm_add_amount"
+    },
+    "company_b": {
+     "company": "하나마이크론",
+     "bsns_year": "2026",
+     "reprt_code": "11012",
+     "numerator_account": "영업이익",
+     "denominator_account": "매출액",
+     "amount_field": "thstrm_add_amount"
+    }
+   }
+  },
+  {
+   "id": "v5_compare_5",
+   "type": "compare",
+   "question": "테크윙, 한미반도체 두 회사 중 2025년 말 기준 부채비율이 더 높은 곳은 어디야? 수치도 알려줘",
+   "rubric": "두 회사의 2025년 말 기준 부채비율을 각각 %로 제시하고, 더 높은 곳(테크윙)을 올바르게 결론 내려야 한다. 결론이 틀리거나 수치가 없으면 fail.",
+   "company": "테크윙",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "ratio_pair",
+    "company_a": {
+     "company": "테크윙",
+     "bsns_year": "2025",
+     "reprt_code": "11011",
+     "numerator_account": "부채총계",
+     "denominator_account": "자본총계",
+     "amount_field": "thstrm_amount"
+    },
+    "company_b": {
+     "company": "한미반도체",
+     "bsns_year": "2025",
+     "reprt_code": "11011",
+     "numerator_account": "부채총계",
+     "denominator_account": "자본총계",
+     "amount_field": "thstrm_amount"
+    }
+   }
+  },
+  {
+   "id": "v5_price_return_1",
+   "type": "price_return",
+   "question": "2026년 3월 두산 주가 수익률이 어떻게 돼?",
+   "rubric": "두산의 2026년 3월 주가 수익률(그 달 첫 거래일 종가 대비 마지막 거래일 종가)을 %로 제시하고 방향을 올바르게 말해야 한다. 다른 기간 값을 제시하거나 수치가 없으면 fail.",
+   "company": "두산",
+   "expected_sources": [
+    "price"
+   ],
+   "numeric_target": {
+    "kind": "price_return",
+    "company": "두산",
+    "start": "2026-03-01",
+    "end": "2026-03-31"
+   }
+  },
+  {
+   "id": "v5_price_return_2",
+   "type": "price_return",
+   "question": "2026년 8월 네이버 주가 수익률이 어떻게 돼?",
+   "rubric": "NAVER의 2026년 8월 주가 수익률(그 달 첫 거래일 종가 대비 마지막 거래일 종가)을 %로 제시하고 방향을 올바르게 말해야 한다. 다른 기간 값을 제시하거나 수치가 없으면 fail.",
+   "company": "NAVER",
+   "expected_sources": [
+    "price"
+   ],
+   "numeric_target": {
+    "kind": "price_return",
+    "company": "NAVER",
+    "start": "2026-08-01",
+    "end": "2026-08-31"
+   }
+  },
+  {
+   "id": "v5_price_return_3",
+   "type": "price_return",
+   "question": "KB금융 주가는 2026년 2월 한 달 동안 몇 % 움직였어?",
+   "rubric": "KB금융의 2026년 2월 주가 수익률(그 달 첫 거래일 종가 대비 마지막 거래일 종가)을 %로 제시하고 방향을 올바르게 말해야 한다. 다른 기간 값을 제시하거나 수치가 없으면 fail.",
+   "company": "KB금융",
+   "expected_sources": [
+    "price"
+   ],
+   "numeric_target": {
+    "kind": "price_return",
+    "company": "KB금융",
+    "start": "2026-02-01",
+    "end": "2026-02-28"
+   }
+  },
+  {
+   "id": "v5_price_return_4",
+   "type": "price_return",
+   "question": "2026년 4월 HD현대일렉트릭 주가 수익률이 어떻게 돼?",
+   "rubric": "HD현대일렉트릭의 2026년 4월 주가 수익률(그 달 첫 거래일 종가 대비 마지막 거래일 종가)을 %로 제시하고 방향을 올바르게 말해야 한다. 다른 기간 값을 제시하거나 수치가 없으면 fail.",
+   "company": "HD현대일렉트릭",
+   "expected_sources": [
+    "price"
+   ],
+   "numeric_target": {
+    "kind": "price_return",
+    "company": "HD현대일렉트릭",
+    "start": "2026-04-01",
+    "end": "2026-04-30"
+   }
+  },
+  {
+   "id": "v5_price_return_5",
+   "type": "price_return",
+   "question": "ISC 주가는 2026년 7월 한 달 동안 몇 % 움직였어?",
+   "rubric": "ISC의 2026년 7월 주가 수익률(그 달 첫 거래일 종가 대비 마지막 거래일 종가)을 %로 제시하고 방향을 올바르게 말해야 한다. 다른 기간 값을 제시하거나 수치가 없으면 fail.",
+   "company": "ISC",
+   "expected_sources": [
+    "price"
+   ],
+   "numeric_target": {
+    "kind": "price_return",
+    "company": "ISC",
+    "start": "2026-07-01",
+    "end": "2026-07-31"
+   }
+  },
+  {
+   "id": "v5_valuation_1",
+   "type": "valuation",
+   "question": "2026년 9월 10일 기준 하나금융지주 PBR 알려줘",
+   "rubric": "하나금융지주의 2026년 9월 10일 기준 PBR를 배수로 제시해야 한다. 다른 날짜 값을 제시하거나 수치가 없으면 fail.",
+   "company": "하나금융지주",
+   "expected_sources": [
+    "price"
+   ],
+   "numeric_target": {
+    "kind": "per",
+    "field": "PBR",
+    "company": "하나금융지주",
+    "on": "2026-09-10"
+   }
+  },
+  {
+   "id": "v5_valuation_2",
+   "type": "valuation",
+   "question": "포스코의 2026년 9월 10일 기준 PBR는 몇 배야?",
+   "rubric": "POSCO홀딩스의 2026년 9월 10일 기준 PBR를 배수로 제시해야 한다. 다른 날짜 값을 제시하거나 수치가 없으면 fail.",
+   "company": "POSCO홀딩스",
+   "expected_sources": [
+    "price"
+   ],
+   "numeric_target": {
+    "kind": "per",
+    "field": "PBR",
+    "company": "POSCO홀딩스",
+    "on": "2026-09-10"
+   }
+  },
+  {
+   "id": "v5_valuation_3",
+   "type": "valuation",
+   "question": "2026년 9월 1일 기준 SK PER 알려줘",
+   "rubric": "SK의 2026년 9월 1일 기준 PER를 배수로 제시해야 한다. 다른 날짜 값을 제시하거나 수치가 없으면 fail.",
+   "company": "SK",
+   "expected_sources": [
+    "price"
+   ],
+   "numeric_target": {
+    "kind": "per",
+    "field": "PER",
+    "company": "SK",
+    "on": "2026-09-01"
+   }
+  },
+  {
+   "id": "v5_valuation_4",
+   "type": "valuation",
+   "question": "삼성전기의 2026년 9월 7일 기준 PER는 몇 배야?",
+   "rubric": "삼성전기의 2026년 9월 7일 기준 PER를 배수로 제시해야 한다. 다른 날짜 값을 제시하거나 수치가 없으면 fail.",
+   "company": "삼성전기",
+   "expected_sources": [
+    "price"
+   ],
+   "numeric_target": {
+    "kind": "per",
+    "field": "PER",
+    "company": "삼성전기",
+    "on": "2026-09-07"
+   }
+  },
+  {
+   "id": "v5_valuation_5",
+   "type": "valuation",
+   "question": "삼성전기의 2026년 9월 18일 기준 PBR는 몇 배야?",
+   "rubric": "삼성전기의 2026년 9월 18일 기준 PBR를 배수로 제시해야 한다. 다른 날짜 값을 제시하거나 수치가 없으면 fail.",
+   "company": "삼성전기",
+   "expected_sources": [
+    "price"
+   ],
+   "numeric_target": {
+    "kind": "per",
+    "field": "PBR",
+    "company": "삼성전기",
+    "on": "2026-09-18"
+   }
+  },
+  {
+   "id": "v5_price_premise_1",
+   "type": "price_premise",
+   "question": "한미반도체 주가가 2026년 2월에 왜 올랐어?",
+   "rubric": "실제로는 상승(+72.9%)했다. 전제가 맞으면 주가 데이터로 사실임을 확인하고, 틀리면 답변 첫머리에서 바로잡은 뒤 실제 방향을 기준으로 설명해야 한다. 원인은 조회 자료의 구체적 사실로 뒷받침해야 하며, 못 찾은 부분은 솔직히 밝히면 된다. 틀린 전제를 받아들이거나, 맞는 전제를 틀렸다고 하거나, 근거 없는 원인을 사실처럼 단정하면 fail.",
+   "company": "한미반도체",
+   "expected_sources": [
+    "price",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "price_direction",
+    "company": "한미반도체",
+    "start": "2026-02-01",
+    "end": "2026-02-28"
+   }
+  },
+  {
+   "id": "v5_price_premise_2",
+   "type": "price_premise",
+   "question": "POSCO홀딩스 주가가 2026년 4월에 왜 떨어졌어?",
+   "rubric": "실제로는 상승(+33.5%)했다. 전제가 맞으면 주가 데이터로 사실임을 확인하고, 틀리면 답변 첫머리에서 바로잡은 뒤 실제 방향을 기준으로 설명해야 한다. 원인은 조회 자료의 구체적 사실로 뒷받침해야 하며, 못 찾은 부분은 솔직히 밝히면 된다. 틀린 전제를 받아들이거나, 맞는 전제를 틀렸다고 하거나, 근거 없는 원인을 사실처럼 단정하면 fail.",
+   "company": "POSCO홀딩스",
+   "expected_sources": [
+    "price",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "price_direction",
+    "company": "POSCO홀딩스",
+    "start": "2026-04-01",
+    "end": "2026-04-30"
+   }
+  },
+  {
+   "id": "v5_price_premise_3",
+   "type": "price_premise",
+   "question": "SK이노베이션 주가가 2026년 1월에 왜 올랐어?",
+   "rubric": "실제로는 상승(+12.1%)했다. 전제가 맞으면 주가 데이터로 사실임을 확인하고, 틀리면 답변 첫머리에서 바로잡은 뒤 실제 방향을 기준으로 설명해야 한다. 원인은 조회 자료의 구체적 사실로 뒷받침해야 하며, 못 찾은 부분은 솔직히 밝히면 된다. 틀린 전제를 받아들이거나, 맞는 전제를 틀렸다고 하거나, 근거 없는 원인을 사실처럼 단정하면 fail.",
+   "company": "SK이노베이션",
+   "expected_sources": [
+    "price",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "price_direction",
+    "company": "SK이노베이션",
+    "start": "2026-01-01",
+    "end": "2026-01-31"
+   }
+  },
+  {
+   "id": "v5_price_premise_4",
+   "type": "price_premise",
+   "question": "ISC 주가가 2026년 4월에 왜 올랐어?",
+   "rubric": "실제로는 하락(-8.1%)했다. 전제가 맞으면 주가 데이터로 사실임을 확인하고, 틀리면 답변 첫머리에서 바로잡은 뒤 실제 방향을 기준으로 설명해야 한다. 원인은 조회 자료의 구체적 사실로 뒷받침해야 하며, 못 찾은 부분은 솔직히 밝히면 된다. 틀린 전제를 받아들이거나, 맞는 전제를 틀렸다고 하거나, 근거 없는 원인을 사실처럼 단정하면 fail.",
+   "company": "ISC",
+   "expected_sources": [
+    "price",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "price_direction",
+    "company": "ISC",
+    "start": "2026-04-01",
+    "end": "2026-04-30"
+   }
+  },
+  {
+   "id": "v5_price_premise_5",
+   "type": "price_premise",
+   "question": "HPSP 주가가 2026년 8월에 왜 올랐어?",
+   "rubric": "실제로는 상승(+47.9%)했다. 전제가 맞으면 주가 데이터로 사실임을 확인하고, 틀리면 답변 첫머리에서 바로잡은 뒤 실제 방향을 기준으로 설명해야 한다. 원인은 조회 자료의 구체적 사실로 뒷받침해야 하며, 못 찾은 부분은 솔직히 밝히면 된다. 틀린 전제를 받아들이거나, 맞는 전제를 틀렸다고 하거나, 근거 없는 원인을 사실처럼 단정하면 fail.",
+   "company": "HPSP",
+   "expected_sources": [
+    "price",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "price_direction",
+    "company": "HPSP",
+    "start": "2026-08-01",
+    "end": "2026-08-31"
+   }
+  },
+  {
+   "id": "v5_financial_premise_1",
+   "type": "financial_premise",
+   "question": "ISC 2026년 1분기 영업이익이 왜 늘었어?",
+   "rubric": "실제로는 전년 동기 대비 증가(+237.8%)했다. 두 기간의 영업이익 금액이나 증감률을 제시하고, 전제가 맞으면 확인, 틀리면 답변 첫머리에서 바로잡아야 한다. 원인은 조회 자료의 구체적 사실로 뒷받침해야 하며, 못 찾은 부분은 솔직히 밝히면 된다. 틀린 전제를 받아들이거나, 맞는 전제를 틀렸다고 하거나, 근거 없는 원인을 사실처럼 단정하면 fail.",
+   "company": "ISC",
+   "expected_sources": [
+    "dart",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "growth",
+    "company": "ISC",
+    "bsns_year": "2026",
+    "reprt_code": "11013",
+    "account_name": "영업이익",
+    "current_field": "thstrm_amount",
+    "prior_field": "frmtrm_amount"
+   }
+  },
+  {
+   "id": "v5_financial_premise_2",
+   "type": "financial_premise",
+   "question": "네이버 2026년 상반기(1~6월) 누적 매출액이 왜 줄었어?",
+   "rubric": "실제로는 전년 동기 대비 증가(+16.3%)했다. 두 기간의 매출액 금액이나 증감률을 제시하고, 전제가 맞으면 확인, 틀리면 답변 첫머리에서 바로잡아야 한다. 원인은 조회 자료의 구체적 사실로 뒷받침해야 하며, 못 찾은 부분은 솔직히 밝히면 된다. 틀린 전제를 받아들이거나, 맞는 전제를 틀렸다고 하거나, 근거 없는 원인을 사실처럼 단정하면 fail.",
+   "company": "NAVER",
+   "expected_sources": [
+    "dart",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "growth",
+    "company": "NAVER",
+    "bsns_year": "2026",
+    "reprt_code": "11012",
+    "account_name": "매출액",
+    "current_field": "thstrm_add_amount",
+    "prior_field": "frmtrm_add_amount"
+   }
+  },
+  {
+   "id": "v5_financial_premise_3",
+   "type": "financial_premise",
+   "question": "기아차 2026년 1분기 매출액이 왜 늘었어?",
+   "rubric": "실제로는 전년 동기 대비 증가(+5.3%)했다. 두 기간의 매출액 금액이나 증감률을 제시하고, 전제가 맞으면 확인, 틀리면 답변 첫머리에서 바로잡아야 한다. 원인은 조회 자료의 구체적 사실로 뒷받침해야 하며, 못 찾은 부분은 솔직히 밝히면 된다. 틀린 전제를 받아들이거나, 맞는 전제를 틀렸다고 하거나, 근거 없는 원인을 사실처럼 단정하면 fail.",
+   "company": "기아",
+   "expected_sources": [
+    "dart",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "growth",
+    "company": "기아",
+    "bsns_year": "2026",
+    "reprt_code": "11013",
+    "account_name": "매출액",
+    "current_field": "thstrm_amount",
+    "prior_field": "frmtrm_amount"
+   }
+  },
+  {
+   "id": "v5_financial_premise_4",
+   "type": "financial_premise",
+   "question": "HD현대일렉트릭 2026년 상반기(1~6월) 누적 매출액이 왜 줄었어?",
+   "rubric": "실제로는 전년 동기 대비 증가(+13.4%)했다. 두 기간의 매출액 금액이나 증감률을 제시하고, 전제가 맞으면 확인, 틀리면 답변 첫머리에서 바로잡아야 한다. 원인은 조회 자료의 구체적 사실로 뒷받침해야 하며, 못 찾은 부분은 솔직히 밝히면 된다. 틀린 전제를 받아들이거나, 맞는 전제를 틀렸다고 하거나, 근거 없는 원인을 사실처럼 단정하면 fail.",
+   "company": "HD현대일렉트릭",
+   "expected_sources": [
+    "dart",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "growth",
+    "company": "HD현대일렉트릭",
+    "bsns_year": "2026",
+    "reprt_code": "11012",
+    "account_name": "매출액",
+    "current_field": "thstrm_add_amount",
+    "prior_field": "frmtrm_add_amount"
+   }
+  },
+  {
+   "id": "v5_financial_premise_5",
+   "type": "financial_premise",
+   "question": "현대모비스 2025년 1~9월 누적 매출액이 왜 늘었어?",
+   "rubric": "실제로는 전년 동기 대비 증가(+7.5%)했다. 두 기간의 매출액 금액이나 증감률을 제시하고, 전제가 맞으면 확인, 틀리면 답변 첫머리에서 바로잡아야 한다. 원인은 조회 자료의 구체적 사실로 뒷받침해야 하며, 못 찾은 부분은 솔직히 밝히면 된다. 틀린 전제를 받아들이거나, 맞는 전제를 틀렸다고 하거나, 근거 없는 원인을 사실처럼 단정하면 fail.",
+   "company": "현대모비스",
+   "expected_sources": [
+    "dart",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "growth",
+    "company": "현대모비스",
+    "bsns_year": "2025",
+    "reprt_code": "11014",
+    "account_name": "매출액",
+    "current_field": "thstrm_add_amount",
+    "prior_field": "frmtrm_add_amount"
+   }
+  },
+  {
+   "id": "v5_peer_top_1",
+   "type": "peer_top",
+   "question": "반도체 소재 업체들 중 2026년 상반기 누적 기준 영업이익률이 가장 높은 곳은 어디고 몇 %야?",
+   "rubric": "비교 대상 업종에서 영업이익률 1위 회사와 그 수치를 제시해야 한다. 1위 회사를 틀리게 말하거나 수치가 없으면 fail.",
+   "company": "솔브레인",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "peer_top",
+    "group": "소재",
+    "metric": "영업이익률"
+   }
+  },
+  {
+   "id": "v5_peer_top_2",
+   "type": "peer_top",
+   "question": "코스피 시가총액 상위 30개 회사 중 2026년 상반기 누적 기준 순이익률이 가장 높은 곳은 어디고 몇 %야?",
+   "rubric": "비교 대상 업종에서 순이익률 1위 회사와 그 수치를 제시해야 한다. 1위 회사를 틀리게 말하거나 수치가 없으면 fail.",
+   "company": "SK스퀘어",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "peer_top",
+    "group": "코스피 시가총액 상위",
+    "metric": "순이익률"
+   }
+  },
+  {
+   "id": "v5_peer_top_3",
+   "type": "peer_top",
+   "question": "유진테크의 동종 업계 회사들 중 2026년 상반기 누적 기준 영업이익률이 가장 높은 곳은 어디고 몇 %야?",
+   "rubric": "비교 대상 업종에서 영업이익률 1위 회사와 그 수치를 제시해야 한다. 1위 회사를 틀리게 말하거나 수치가 없으면 fail.",
+   "company": "원익IPS",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "peer_top",
+    "group": "유진테크",
+    "metric": "영업이익률"
+   }
+  },
+  {
+   "id": "v5_peer_top_4",
+   "type": "peer_top",
+   "question": "반도체 패키징·기판 업체들 중 2026년 상반기 누적 기준 영업이익률이 가장 높은 곳은 어디고 몇 %야?",
+   "rubric": "비교 대상 업종에서 영업이익률 1위 회사와 그 수치를 제시해야 한다. 1위 회사를 틀리게 말하거나 수치가 없으면 fail.",
+   "company": "하나마이크론",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "peer_top",
+    "group": "패키징·기판",
+    "metric": "영업이익률"
+   }
+  },
+  {
+   "id": "v5_peer_top_5",
+   "type": "peer_top",
+   "question": "코스피 시가총액 상위 30개 회사 중 2026년 상반기 누적 기준 영업이익 증가율이 가장 높은 곳은 어디고 몇 %야?",
+   "rubric": "비교 대상 업종에서 영업이익 증가율 1위 회사와 그 수치를 제시해야 한다. 1위 회사를 틀리게 말하거나 수치가 없으면 fail.",
+   "company": "SK스퀘어",
+   "expected_sources": [
+    "dart"
+   ],
+   "numeric_target": {
+    "kind": "peer_top",
+    "group": "코스피 시가총액 상위",
+    "metric": "영업이익 증가율"
+   }
+  },
+  {
+   "id": "v5_divergence_1",
+   "type": "divergence",
+   "question": "HD현대중공업 2026년 1분기 매출액은 전년 동기 대비 늘었는데 같은 기간 주가는 왜 떨어졌어?",
+   "rubric": "HD현대중공업의 2026년 1분기 매출액 증감(전년 동기 대비)과 같은 기간 주가 방향을 둘 다 실제 수치로 확인하고, 실적과 주가가 반대로 움직인 이유를 조회 자료의 구체적 사실로 설명해야 한다. 근거를 찾지 못한 부분은 못 찾았다고 밝히면 되며, 근거 없는 원인을 사실처럼 단정하면 fail. 실적 증감 방향이나 주가 방향을 틀리게 말하면 fail.",
+   "company": "HD현대중공업",
+   "expected_sources": [
+    "dart",
+    "price",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "divergence",
+    "growth": {
+     "kind": "growth",
+     "company": "HD현대중공업",
+     "bsns_year": "2026",
+     "reprt_code": "11013",
+     "account_name": "매출액",
+     "current_field": "thstrm_amount",
+     "prior_field": "frmtrm_amount"
+    },
+    "price": {
+     "company": "HD현대중공업",
+     "start": "2026-01-01",
+     "end": "2026-03-31"
+    }
+   }
+  },
+  {
+   "id": "v5_divergence_2",
+   "type": "divergence",
+   "question": "삼성바이오로직스 2026년 1분기 영업이익은 전년 동기 대비 늘었는데 같은 기간 주가는 왜 떨어졌어?",
+   "rubric": "삼성바이오로직스의 2026년 1분기 영업이익 증감(전년 동기 대비)과 같은 기간 주가 방향을 둘 다 실제 수치로 확인하고, 실적과 주가가 반대로 움직인 이유를 조회 자료의 구체적 사실로 설명해야 한다. 근거를 찾지 못한 부분은 못 찾았다고 밝히면 되며, 근거 없는 원인을 사실처럼 단정하면 fail. 실적 증감 방향이나 주가 방향을 틀리게 말하면 fail.",
+   "company": "삼성바이오로직스",
+   "expected_sources": [
+    "dart",
+    "price",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "divergence",
+    "growth": {
+     "kind": "growth",
+     "company": "삼성바이오로직스",
+     "bsns_year": "2026",
+     "reprt_code": "11013",
+     "account_name": "영업이익",
+     "current_field": "thstrm_amount",
+     "prior_field": "frmtrm_amount"
+    },
+    "price": {
+     "company": "삼성바이오로직스",
+     "start": "2026-01-01",
+     "end": "2026-03-31"
+    }
+   }
+  },
+  {
+   "id": "v5_divergence_3",
+   "type": "divergence",
+   "question": "HPSP 2025년 연간 매출액은 전년 대비 줄었는데 같은 기간 주가는 왜 올랐어?",
+   "rubric": "HPSP의 2025년 연간 매출액 증감(전년 대비)과 같은 기간 주가 방향을 둘 다 실제 수치로 확인하고, 실적과 주가가 반대로 움직인 이유를 조회 자료의 구체적 사실로 설명해야 한다. 근거를 찾지 못한 부분은 못 찾았다고 밝히면 되며, 근거 없는 원인을 사실처럼 단정하면 fail. 실적 증감 방향이나 주가 방향을 틀리게 말하면 fail.",
+   "company": "HPSP",
+   "expected_sources": [
+    "dart",
+    "price",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "divergence",
+    "growth": {
+     "kind": "growth",
+     "company": "HPSP",
+     "bsns_year": "2025",
+     "reprt_code": "11011",
+     "account_name": "매출액",
+     "current_field": "thstrm_amount",
+     "prior_field": "frmtrm_amount"
+    },
+    "price": {
+     "company": "HPSP",
+     "start": "2025-01-01",
+     "end": "2025-12-31"
+    }
+   }
+  },
+  {
+   "id": "v5_divergence_4",
+   "type": "divergence",
+   "question": "셀트리온 2026년 상반기(1~6월) 누적 영업이익은 전년 동기 대비 늘었는데 같은 기간 주가는 왜 떨어졌어?",
+   "rubric": "셀트리온의 2026년 상반기(1~6월) 누적 영업이익 증감(전년 동기 대비)과 같은 기간 주가 방향을 둘 다 실제 수치로 확인하고, 실적과 주가가 반대로 움직인 이유를 조회 자료의 구체적 사실로 설명해야 한다. 근거를 찾지 못한 부분은 못 찾았다고 밝히면 되며, 근거 없는 원인을 사실처럼 단정하면 fail. 실적 증감 방향이나 주가 방향을 틀리게 말하면 fail.",
+   "company": "셀트리온",
+   "expected_sources": [
+    "dart",
+    "price",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "divergence",
+    "growth": {
+     "kind": "growth",
+     "company": "셀트리온",
+     "bsns_year": "2026",
+     "reprt_code": "11012",
+     "account_name": "영업이익",
+     "current_field": "thstrm_add_amount",
+     "prior_field": "frmtrm_add_amount"
+    },
+    "price": {
+     "company": "셀트리온",
+     "start": "2026-01-01",
+     "end": "2026-06-30"
+    }
+   }
+  },
+  {
+   "id": "v5_divergence_5",
+   "type": "divergence",
+   "question": "SK 2025년 1~9월 누적 영업이익은 전년 동기 대비 줄었는데 같은 기간 주가는 왜 올랐어?",
+   "rubric": "SK의 2025년 1~9월 누적 영업이익 증감(전년 동기 대비)과 같은 기간 주가 방향을 둘 다 실제 수치로 확인하고, 실적과 주가가 반대로 움직인 이유를 조회 자료의 구체적 사실로 설명해야 한다. 근거를 찾지 못한 부분은 못 찾았다고 밝히면 되며, 근거 없는 원인을 사실처럼 단정하면 fail. 실적 증감 방향이나 주가 방향을 틀리게 말하면 fail.",
+   "company": "SK",
+   "expected_sources": [
+    "dart",
+    "price",
+    "news"
+   ],
+   "numeric_target": {
+    "kind": "divergence",
+    "growth": {
+     "kind": "growth",
+     "company": "SK",
+     "bsns_year": "2025",
+     "reprt_code": "11014",
+     "account_name": "영업이익",
+     "current_field": "thstrm_add_amount",
+     "prior_field": "frmtrm_add_amount"
+    },
+    "price": {
+     "company": "SK",
+     "start": "2025-01-01",
+     "end": "2025-09-30"
+    }
+   }
+  },
+  {
+   "id": "v5_out_of_scope_1",
+   "type": "out_of_scope",
+   "question": "아마존의 최근 분기 영업이익은 얼마야?",
+   "rubric": "아마존은(는) 국내 DART 공시 대상이 아니다(해외 상장사). 데이터가 없어 답할 수 없다고 명확히 밝혀야 한다. 수치를 지어내거나 다른 기업의 수치를 대신 제시하면 fail. 비슷한 이름의 국내 상장사를 안내하는 것은 fail 사유가 아니다.",
+   "company": "아마존",
+   "expected_sources": [],
+   "numeric_target": null
+  },
+  {
+   "id": "v5_out_of_scope_2",
+   "type": "out_of_scope",
+   "question": "삼성전기 2026년 3분기(1~9월 누적) 영업이익은 얼마야?",
+   "rubric": "2026년 3분기보고서는 질문 시점 기준 아직 공시되지 않았다(3분기 자체가 아직 끝나지도 않았다). 아직 확인할 수 없다고 밝혀야 한다. 과거(예: 상반기) 수치를 3분기 수치인 것처럼 제시하거나 미래 실적을 확정된 사실처럼 단정하면 fail. 추정임을 분명히 밝히며 참고로만 언급하는 것은 fail 사유가 아니다.",
+   "company": "삼성전기",
+   "expected_sources": [],
+   "numeric_target": null
+  },
+  {
+   "id": "v5_out_of_scope_3",
+   "type": "out_of_scope",
+   "question": "마이크로소프트의 최근 분기 영업이익은 얼마야?",
+   "rubric": "마이크로소프트은(는) 국내 DART 공시 대상이 아니다(해외 상장사). 데이터가 없어 답할 수 없다고 명확히 밝혀야 한다. 수치를 지어내거나 다른 기업의 수치를 대신 제시하면 fail. 비슷한 이름의 국내 상장사를 안내하는 것은 fail 사유가 아니다.",
+   "company": "마이크로소프트",
+   "expected_sources": [],
+   "numeric_target": null
+  },
+  {
+   "id": "v5_out_of_scope_4",
+   "type": "out_of_scope",
+   "question": "HPSP 2026년 3분기(1~9월 누적) 영업이익은 얼마야?",
+   "rubric": "2026년 3분기보고서는 질문 시점 기준 아직 공시되지 않았다(3분기 자체가 아직 끝나지도 않았다). 아직 확인할 수 없다고 밝혀야 한다. 과거(예: 상반기) 수치를 3분기 수치인 것처럼 제시하거나 미래 실적을 확정된 사실처럼 단정하면 fail. 추정임을 분명히 밝히며 참고로만 언급하는 것은 fail 사유가 아니다.",
+   "company": "HPSP",
+   "expected_sources": [],
+   "numeric_target": null
+  },
+  {
+   "id": "v5_out_of_scope_5",
+   "type": "out_of_scope",
+   "question": "애플의 최근 분기 영업이익은 얼마야?",
+   "rubric": "애플은(는) 국내 DART 공시 대상이 아니다(해외 상장사). 데이터가 없어 답할 수 없다고 명확히 밝혀야 한다. 수치를 지어내거나 다른 기업의 수치를 대신 제시하면 fail. 비슷한 이름의 국내 상장사를 안내하는 것은 fail 사유가 아니다.",
+   "company": "애플",
+   "expected_sources": [],
+   "numeric_target": null
+  }
+ ]
+}

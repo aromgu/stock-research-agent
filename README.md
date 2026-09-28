@@ -14,6 +14,7 @@
           ├─▶ get_financial_data  DART 재무제표 (전년 동기·전기말 비교값, 연도 지정, 조회 가능 보고서 목록)
           ├─▶ search_news         NAVER 실시간 검색 + bge-m3 재정렬 (기간 필터, 페이지 넘김, 중복 기사 제거)
           ├─▶ get_stock_price     KRX 주가·기간 수익률·PER/PBR/시가총액 (pykrx)
+          ├─▶ get_technical_analysis  이동평균/RSI/MACD/볼린저밴드/거래량/공매도/수급 (pykrx)
           ├─▶ compare_peers       같은 업종 회사들의 재무 지표 순위 (핵심 종목군 50개사 기준)
           └─▶ read_articles       검색 요약만으로 부족할 때만, 고른 기사 1~3개의 본문 앞부분
           ※ 재무 질문인데 재무 도구를 안 불렀으면 코드가 한 번 되돌려 조회하게 함
@@ -30,7 +31,7 @@
 |---|---|
 | `src/data/` | DART / NAVER / KRX 클라이언트, 재무 데이터 수집, 핵심 종목군 정의(`universe.py`)와 수집 스크립트(`build_universe.py`) |
 | `data/universe_snapshot.json` | 핵심 종목군 스냅샷 (시가총액 순위를 날짜로 고정해 평가를 재현 가능하게) |
-| `src/agent/tools.py` | 도구 5개 (OpenAI function calling 스키마 + 실행 함수) |
+| `src/agent/tools.py` | 도구 6개 (OpenAI function calling 스키마 + 실행 함수) |
 | `src/agent/memory.py`, `src/agent/chat.py` | 대화 메모리, 터미널 대화 모드 |
 | `src/agent/planner.py` | 플래너 에이전트 (Phase 4) |
 | `src/agent/baseline.py` | 비교용 고정 파이프라인 3종 (Phase 3) |
@@ -81,6 +82,11 @@
 
 29문항 × 4방식, 1회 실행 기준 (2026-09-26). 계획(도구 선택)은 gpt-5.4-nano, 최종 답변은 네 방식 모두 gpt-5.4-mini, 심판도 gpt-5.4-mini입니다.
 
+**주의 (2026-09-28 기준)**: 아래 숫자는 `get_technical_analysis` 도구 추가 이전, 그리고 `.venv`에 `transformers`/`torch`가
+누락돼 있던 환경에서 나온 결과입니다. 후자는 뉴스 검색(`search_news_reranked`)이 매 호출 실패했다는 뜻이라, 뉴스가
+필요한 문항의 점수는 재현되지 않을 가능성이 높습니다. 의존성 설치를 고쳤으니 (`pip install -r requirements.txt`)
+다음 `run_phase5` 실행부터는 정상 집계됩니다 — 이 표는 재실행 전까지 참고용으로만 보세요.
+
 ### held-out v3 6문항 — 주 지표
 
 | 방식 | 인용 F1 | 수치 정확도 | LLM 심판 통과 |
@@ -118,6 +124,27 @@
 - **에이전트의 구조적 우위는 기본 인자로 못 가져오는 정보가 필요한 질문에 남습니다.** 특정 연도·기간(2025년 연간, 1~9월 누적, 8월 수익률), 두 회사 비교, 경쟁사 대비 위치, 잘못된 전제 교정 — 이 유형(v2_1, v2_2, v2_4, v2_5, v3_4, v3_5)은 "항상 모든 도구"가 **전부 실패**하고 에이전트는 **전부 통과**했습니다. 이게 이 프로젝트가 증명하는 핵심입니다.
 - **에이전트가 밀린 문항**: v3_3(업종 1위, 심판 탈락)은 도구 버그 — 에이전트가 "반도체 소재"로 불렀는데 업종 이름이 정확히 "소재"여야만 인식했습니다. 수정했지만 v3 점수는 수정 전 그대로 둡니다. v3_2(별칭)는 금액을 맞게 조회해 놓고 "약 6,629.8억 원"으로 단위를 잘못 환산했습니다(실제 6조 6,298억). 심판은 통과시켰지만 쌍대 비교에서 져서 드러난 오류로, 프롬프트를 고치지 않고 약점으로 기록만 해 둡니다 (held-out 결과를 보고 튜닝하지 않기 위해).
 - **1회 실행이라는 한계는 그대로입니다.** 같은 질문에서도 실행마다 에이전트 행동이 달라지는 것을 확인했습니다.
+
+### Ablation: 검증 단계 vs 도구 선택 (held-out v4, 45문항, 2026-09-28)
+
+에이전트에만 있던 검증 단계(초안을 mini로 재작성)가 "도구를 골라 쓰는 능력"과 효과가 섞여 있었는지
+확인하기 위해, 검증 단계를 끈 에이전트(`agent_no_verify`)와 검증 단계를 붙인 고정 파이프라인
+(`all_tools_baseline_verified`)을 추가로 실행했다 (`python -m src.eval.run_phase5 --splits heldout_v4
+--approaches agent,agent_no_verify,all_tools_baseline,all_tools_baseline_verified`).
+
+| 방식 | 인용 F1 | 수치 정답 | LLM 심판 통과 |
+|---|---|---|---|
+| agent (검증 O) | 0.97 | 41/45 | **37/45 (82%)** |
+| agent_no_verify (검증 X) | 0.98 | 40/45 | 34/45 (76%) |
+| all_tools_baseline (검증 X) | 0.58 | 22/45 | 11/45 (24%) |
+| all_tools_baseline_verified (검증 O) | 0.58 | 21/45 | 8/45 (18%) |
+
+검증 단계를 빼도 에이전트는 76%로 고정 파이프라인(18~24%)을 압도적으로 이긴다 — "도구 선택" 자체가
+격차의 대부분을 설명하고, 검증 단계는 에이전트에서만 +7%p(34→37)를 더할 뿐이다. 검증 단계를 고정
+파이프라인에 붙이면 오히려 **더 나빠졌다**(11→8, 유리해진 문항 0개·불리해진 문항 3개) — 이미 노이즈가
+많은 "항상 모든 도구" 근거를 놓고 재작성하면 없던 오류가 생길 수 있음을 시사한다. 이 실행은 뉴스 검색
+의존성(`transformers`/`torch`) 설치 누락을 고친 뒤 처음 돌린 것이라, v3의 5/6 vs 4/6보다 훨씬 큰
+격차가 나왔다 — 이전 결과가 그 버그 때문에 저평가됐을 가능성이 있다. 1회 실행이라 통계적으로는 약하다.
 
 ### 도구 호출 경로 (전체 29문항)
 
@@ -213,6 +240,11 @@ SK하이닉스 2026년 상반기 영업이익은 늘었습니다. 상반기 누�
 - **기업 목록 파일을 호출마다 다시 읽음**: 캐시를 붙인 뒤 측정해 보니 재무 조회가 여전히 호출당 0.17초 — 30MB 기업 목록 JSON을 매번 파싱하고 있었음 → 프로세스당 한 번만 읽도록 (0.076초)
 - **병렬 실행 뒤 호출 수 카운터 경합**: NAVER 일일 호출 수를 JSON 파일로 세고 있었는데, 뉴스 검색을 동시에 돌리고 배치 수집기까지 같이 돌자 반쯤 쓰인 파일을 읽어 검색이 `JSONDecodeError`로 실패함 (호출 수도 빠짐) → SQLite 트랜잭션으로 원자적으로 셈. 스레드 16개로 800번 올려 정확히 800 증가 확인
 - **맞는 전제도 "바로잡음"**: "영업이익이 왜 늘었어?"(실제로 늘었음)에 "질문의 전제와 달리 줄지 않고 크게 늘었습니다"라고 답함. 틀린 전제를 바로잡으라는 규칙만 있고 전제가 맞을 때의 지시가 없었음 → 전제가 맞으면 정정 표현 없이 확인만 하라고 명시 (네 방식 공통 규칙이라 비교 공정성 유지)
+- **`.venv`에 `transformers`/`torch`가 실제로는 설치돼 있지 않았음**: `requirements.txt`엔 있었지만 이 환경엔 없어서, `search_news`(→`search_news_reranked`→`embed_texts`)가 매 호출 `ModuleNotFoundError`로 실패하고 있었다. `_run_tool`이 예외를 잡아 "도구 실행 오류" 문자열로 돌려주기 때문에 에이전트가 죽지 않아 겉으로 티가 안 났다 — 뉴스가 필요한 문항은 조용히 다 틀렸을 것 (2026-09-28 발견·설치로 해결)
+- **`build_universe`가 완전히 새 환경(financials.db 자체가 없음)에서 부팅 불가**: `_n_periods`가 `financials` 테이블이 미리 있다고 가정하고 바로 SELECT해서 `sqlite3.OperationalError: no such table`로 죽었다. 스키마 생성(`collect_financials._init_db`)은 `collect_recent_quarters`/`fetch_report` 안에서만 일어나서, 그 전에 호출되는 `_n_periods`엔 적용이 안 됐음 → `cf._connect()`로 통일해 항상 스키마부터 보장
+- **에이전트 도구 호출에 총량 상한이 없었음**: 스텝 상한(7)만 있고 스텝당 병렬 호출 수(최대 4)는 안 재서, 이론상 질문 하나에 최대 28회까지 호출될 수 있었다 → 스텝 수와 별개로 `MAX_TOOL_CALLS`(20)를 둬서 병렬 호출이 몰려도 먼저 끊기게 함
+- **실행 로그가 파일 하나에 무한정 쌓임**: `logs/agent_runs.md`, `logs/baseline_experiments.md`가 append 전용이라 오래 쓸수록 무한정 커짐 → 월별 파일(`agent_runs_YYYY-MM.md`)로 분리
+- **검증 단계가 에이전트에만 있어 "도구 선택"과 "생성 2단계"의 효과가 안 갈렸음**: `run_agent`가 매번 초안(nano) → 검증(mini) 2단계로 최종 답변을 만드는데, 비교군("항상 모든 도구")은 mini 1단계뿐이었다. 이 상태로는 에이전트가 이겨도 도구를 잘 골라서인지 생성을 두 번 해서인지 구분이 안 됨 → `run_agent(question, verify=False)`와 `baseline.answer_with_all_tools(question, company, verify=True)`를 추가해, `run_phase5 --approaches agent_no_verify,all_tools_baseline_verified`로 두 효과를 분리해서 잴 수 있게 함 (아직 실행은 안 함 — 결과는 다음 평가 실행에서)
 
 ## 알려진 한계
 

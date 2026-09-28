@@ -266,11 +266,17 @@ GENERATORS = [
 ]
 
 
-def generate(seed: int = SEED, per_type: int = PER_TYPE) -> list[dict]:
+def generate(
+    seed: int = SEED,
+    per_type: int = PER_TYPE,
+    generators: list[tuple[str, object]] = GENERATORS,
+    id_prefix: str = "v4",
+) -> list[dict]:
+    """generators/id_prefix를 인자로 받게 해서, v5 이후 세트가 유형을 추가할 때 이 함수를 그대로 재사용할 수 있게 한다."""
     rng = random.Random(seed)
     companies = sorted(c["name"] for c in uv.load_universe() if c["name"] not in _EXCLUDED)
     questions, seen = [], set()
-    for qtype, gen in GENERATORS:
+    for qtype, gen in generators:
         made, attempts = 0, 0
         while made < per_type:
             attempts += 1
@@ -284,7 +290,7 @@ def generate(seed: int = SEED, per_type: int = PER_TYPE) -> list[dict]:
                 continue
             seen.add(key)
             made += 1
-            questions.append({"id": f"v4_{qtype}_{made}", **q})
+            questions.append({"id": f"{id_prefix}_{qtype}_{made}", **q})
     return questions
 
 

@@ -13,6 +13,8 @@ split:
 - "heldout_v3" (HELDOUT_V3_QUESTIONS): 지원 종목 확장·업종 비교·답변 모델 분리 이후 만든 셋. 새 기능을 직접 묻는다.
 - "heldout_v4" (HELDOUT_V4_QUESTIONS): 사람이 고르지 않고 make_heldout_v4.py가 규칙과 고정 시드로 만든 45문항.
   파일 해시를 아래에 고정해 결과를 본 뒤 고치면 로드가 실패한다.
+- "heldout_v5" (HELDOUT_V5_QUESTIONS): v4에 실적-주가 괴리형(divergence)·범위 밖 질문(out_of_scope) 2개
+  유형을 더한 55문항 (make_heldout_v5.py). v4는 이미 결과를 봐서 그대로 얼려두고 새로 만들었다.
 """
 
 import hashlib
@@ -465,6 +467,26 @@ def _load_heldout_v4() -> list[dict]:
 
 HELDOUT_V4_QUESTIONS = _load_heldout_v4()
 
+# held-out v5. 2026-09-29, v4(9개 유형, 45문항)를 고치지 않고 새 유형 2개(실적-주가 괴리형, 범위 밖
+# 질문/정직성 테스트)를 더해 55문항으로 만든 세트 (src/eval/make_heldout_v5.py). v4는 이미 결과를 본
+# 세트라 그대로 두고, 여기서도 결과를 본 뒤 문항을 고치면 로드가 실패하도록 해시를 고정한다.
+HELDOUT_V5_SHA256 = "89244c29b2ab6220f9575d4ba0400caadc3f023f9e8da98c81bd11c09648de9b"
+_V5_PATH = Path(__file__).with_name("heldout_v5.json")
+
+
+def _load_heldout_v5() -> list[dict]:
+    raw = _V5_PATH.read_bytes().replace(b"\r\n", b"\n")
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != HELDOUT_V5_SHA256:
+        raise RuntimeError(f"heldout_v5.json이 고정된 뒤 바뀌었습니다 (해시 {digest[:12]}…). held-out을 고치지 말고 새로 만드세요.")
+    questions = json.loads(raw)["questions"]
+    for q in questions:
+        q["expected_sources"] = set(q["expected_sources"])
+    return questions
+
+
+HELDOUT_V5_QUESTIONS = _load_heldout_v5()
+
 for _q in TUNING_QUESTIONS:
     _q["split"] = "tuning"
 for _q in HELDOUT_QUESTIONS:
@@ -475,5 +497,14 @@ for _q in HELDOUT_V3_QUESTIONS:
     _q["split"] = "heldout_v3"
 for _q in HELDOUT_V4_QUESTIONS:
     _q["split"] = "heldout_v4"
+for _q in HELDOUT_V5_QUESTIONS:
+    _q["split"] = "heldout_v5"
 
-GOLD_QUESTIONS = TUNING_QUESTIONS + HELDOUT_QUESTIONS + HELDOUT_V2_QUESTIONS + HELDOUT_V3_QUESTIONS + HELDOUT_V4_QUESTIONS
+GOLD_QUESTIONS = (
+    TUNING_QUESTIONS
+    + HELDOUT_QUESTIONS
+    + HELDOUT_V2_QUESTIONS
+    + HELDOUT_V3_QUESTIONS
+    + HELDOUT_V4_QUESTIONS
+    + HELDOUT_V5_QUESTIONS
+)

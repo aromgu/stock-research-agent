@@ -1,0 +1,25 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        # financials.db/universe_snapshot.json/.env는 이 저장소에 없다(gitignore) - 이걸 필요로 하는
+        # 테스트는 @unittest.skipUnless로 스스로 건너뛰도록 짜여 있다. 나머지는 전부 API/DB 호출 없이
+        # 순수 로직만 검증한다.
+        run: python -m unittest discover tests -v

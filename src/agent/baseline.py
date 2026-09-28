@@ -15,15 +15,20 @@ from pathlib import Path
 from openai import OpenAI
 
 from . import tools
-from .planner import record_usage
+from .planner import _verify_answer, record_usage
 from .prompts import ANSWER_MODEL, ANSWER_RULE, PLANNER_MODEL, PREMISE_CHECK_RULE
 
-LOG_PATH = Path(__file__).resolve().parent.parent.parent / "logs" / "baseline_experiments.md"
+LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
+
+
+def _log_path() -> Path:
+    """월별 파일로 나눠 logs/baseline_experiments.md 하나가 무한정 커지는 것을 막는다."""
+    return LOG_DIR / f"baseline_experiments_{datetime.now().strftime('%Y-%m')}.md"
 
 
 def _log_experiment(tool: str, question: str, prompt: str, answer: str, elapsed_sec: float) -> None:
-    """실험 입출력을 logs/baseline_experiments.md에 사람이 읽기 좋은 형태로 append."""
-    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    """실험 입출력을 logs/baseline_experiments_YYYY-MM.md에 사람이 읽기 좋은 형태로 append."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = (
         f"## [{timestamp}] {tool.upper()} · 답변 {ANSWER_MODEL} · {elapsed_sec:.1f}초\n\n"
@@ -32,7 +37,7 @@ def _log_experiment(tool: str, question: str, prompt: str, answer: str, elapsed_
         f"### 출력\n{answer}\n\n"
         f"---\n\n"
     )
-    with open(LOG_PATH, "a", encoding="utf-8") as f:
+    with open(_log_path(), "a", encoding="utf-8") as f:
         f.write(entry)
 
 
@@ -113,14 +118,19 @@ def answer_with_news(question: str) -> dict:
     return {"answer": answer, "context": f"[search_news 검색어: {search_query}]\n{context}", "usage": usage}
 
 
-def answer_with_all_tools(question: str, company: str) -> dict:
-    """모든 도구(재무·뉴스·기사 본문·주가·업종 비교)를 질문 내용과 무관하게 항상 한 번씩 불러 답한다. {"answer", "context"} 반환.
+def answer_with_all_tools(question: str, company: str, verify: bool = False) -> dict:
+    """모든 도구(재무·뉴스·기사 본문·주가·기술적 분석·업종 비교)를 질문 내용과 무관하게 항상 한 번씩 불러 답한다. {"answer", "context"} 반환.
 
     도구 인자는 고정: 재무는 최신 보고서, 주가는 최근 30일, 업종 비교는 대상 회사의 영업이익률.
 
     "도구 선택 능력이 있는 게 그냥 도구를 다 부르는 것보다 나은가?"를 보여주기 위한
     비교군 — 에이전트가 이기면 단순히 "정보가 많아서"가 아니라 "필요한 걸 골라 쓰고
     필요하면 재시도하는 능력" 덕분이라는 걸 뒷받침한다.
+
+    verify=True: 에이전트에만 있던 검증 단계(planner._verify_answer)를 이 비교군에도 똑같이 적용한다.
+    "도구 선택"과 "검증 단계"의 효과가 뒤섞이지 않는지 보려면 verify=False(기본, 지금까지의 비교군)와
+    verify=True를 나란히 비교한다 — 에이전트와의 격차가 verify=True에서 줄어들면, 그 격차의 일부는
+    검증 단계 자체(2단계 생성) 덕분이었다는 뜻이다.
     """
     usage: dict = {}
     start = time.perf_counter()
@@ -132,6 +142,10 @@ def answer_with_all_tools(question: str, company: str) -> dict:
         price_context = tools.get_stock_price(company, (date.today() - timedelta(days=30)).isoformat(), end)
     except Exception as e:  # noqa: BLE001 — 비상장사 등으로 주가 조회가 아예 불가능한 경우
         price_context = f"조회 불가: {e}"
+    try:
+        technical_context = tools.get_technical_analysis(company, end)
+    except Exception as e:  # noqa: BLE001 — 비상장사 등으로 기술적 분석이 아예 불가능한 경우
+        technical_context = f"조회 불가: {e}"
     peer_context = tools.compare_peers(company, "영업이익률")
     # 에이전트는 필요할 때만 기사 본문을 읽지만, 이 비교군은 "항상 모든 도구"이므로 상위 3개 본문을 늘 읽는다
     article_ids = re.findall(r"id: ([0-9a-f]{8})", news_context)[:3]
@@ -141,6 +155,7 @@ def answer_with_all_tools(question: str, company: str) -> dict:
         f"[DART 재무 데이터]\n{dart_context}\n\n"
         f"[관련 뉴스 (검색어: {news_query})]\n{news_context}\n\n"
         f"[주가 데이터 (최근 30일)]\n{price_context}\n\n"
+        f"[기술적 분석 (이동평균/RSI/MACD/볼린저밴드/공매도/수급)]\n{technical_context}\n\n"
         f"[같은 업종 비교 (영업이익률)]\n{peer_context}\n\n"
         f"[관련 뉴스 상위 기사 본문]\n{article_context}"
     )
@@ -150,7 +165,21 @@ def answer_with_all_tools(question: str, company: str) -> dict:
         f"이 데이터만 근거로 질문에 답해줘. 관련 없는 출처는 무시하고, 데이터에 없는 "
         f"내용은 모른다고 답해. 질문: {question}"
     )
-    answer = _ask(prompt, usage)
+    draft = _ask(prompt, usage)
+    if verify:
+        # planner._verify_answer는 {"tool", "args", "result"} 형태의 transcript를 기대한다 —
+        # 이 비교군은 고정 인자로 도구를 한 번씩만 부르므로 그 인자·결과를 같은 모양으로 감싼다.
+        pseudo_transcript = [
+            {"tool": "get_financial_data", "args": {"company": company}, "result": dart_context},
+            {"tool": "search_news", "args": {"query": news_query}, "result": news_context},
+            {"tool": "get_stock_price", "args": {"company": company}, "result": price_context},
+            {"tool": "get_technical_analysis", "args": {"company": company}, "result": technical_context},
+            {"tool": "compare_peers", "args": {"target": company, "metric": "영업이익률"}, "result": peer_context},
+            {"tool": "read_articles", "args": {"ids": article_ids}, "result": article_context},
+        ]
+        answer = _verify_answer(_get_client(), question, draft, pseudo_transcript, usage)
+    else:
+        answer = draft
     elapsed = time.perf_counter() - start
-    _log_experiment("all_tools", question, prompt, answer, elapsed)
-    return {"answer": answer, "context": context, "usage": usage}
+    _log_experiment("all_tools" + ("_verified" if verify else ""), question, prompt, answer, elapsed)
+    return {"answer": answer, "draft_answer": draft, "context": context, "usage": usage}

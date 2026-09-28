@@ -66,6 +66,23 @@ class TestDirection(unittest.TestCase):
     def test_accepting_false_premise(self):
         self.assertFalse(_stated_direction_matches("반도체 호황으로 주가가 올랐습니다.", "down"))
 
+    def test_quoted_premise_is_not_counted_as_the_models_own_claim(self):
+        # 실제 v5_divergence_1 사례: 모델이 질문의 원래 전제를 인용부호로 그대로 옮겨 적은 뒤 부정했는데,
+        # 인용된 "떨어졌다"까지 "down"으로 잘못 집계되던 버그 (실제로는 "up"이라고 결론 내린 답변).
+        answer = '"매출은 늘었는데 주가가 떨어졌다"는 전제는 맞지 않고, 주가는 같은 기간 상승했습니다.'
+        self.assertFalse(_stated_direction_matches(answer, "down"))
+        self.assertTrue(_stated_direction_matches(answer, "up"))
+
+    def test_negated_noun_stem_is_not_counted(self):
+        # "하락"/"상승"/"증가"/"감소"는 명사+하다라서 인용부호 없이도 "하락하지 않았다"처럼 부정될 수 있다.
+        answer = "실적은 늘었지만 주가는 하락하지 않았습니다."
+        self.assertFalse(_stated_direction_matches(answer, "down"))
+
+    def test_negated_occurrence_does_not_hide_a_real_one_elsewhere(self):
+        # 같은 단어가 부정문과 긍정문에 둘 다 나오면, 부정 아닌 쪽을 찾아 정답으로 인정해야 한다.
+        answer = "작년엔 하락하지 않았지만, 올해는 하락했습니다."
+        self.assertTrue(_stated_direction_matches(answer, "down"))
+
 
 class TestDeferredAnswer(unittest.TestCase):
     def test_ends_with_clarifying_question(self):
@@ -142,9 +159,16 @@ class TestTrajectory(unittest.TestCase):
         t = analyze_trajectory(run)
         self.assertEqual((t["tool_calls"], t["duplicate_calls"], t["empty_calls"], t["llm_steps"]), (3, 1, 1, 4))
 
-    def test_fixed_pipeline(self):
-        run = {"predicted_sources": ["dart", "news", "price"], "context": "[DART]\n값", "transcript": None}
-        self.assertEqual(analyze_trajectory(run)["tool_calls"], 3)
+    def test_fixed_pipeline_counts_actual_context_blocks_not_source_labels(self):
+        # all_tools_baseline은 실제로 6개 도구를 부르지만 predicted_sources는 출처 "종류"만 3개
+        # (dart/news/price)로 적는다 - tool_calls는 블록 수([...] 헤더 개수)를 세야 실제 호출 수와 맞는다.
+        context = "[DART 재무 데이터]\n값1\n\n[관련 뉴스]\n값2\n\n[주가 데이터]\n값3\n\n[기술적 분석]\n값4"
+        run = {"predicted_sources": ["dart", "news", "price"], "context": context, "transcript": None}
+        self.assertEqual(analyze_trajectory(run)["tool_calls"], 4)
+
+    def test_single_block_fixed_pipeline(self):
+        run = {"predicted_sources": ["dart"], "context": "[DART 재무 데이터]\n값", "transcript": None}
+        self.assertEqual(analyze_trajectory(run)["tool_calls"], 1)
 
 
 if __name__ == "__main__":
